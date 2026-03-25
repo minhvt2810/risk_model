@@ -1,0 +1,681 @@
+library(ggplot2)
+# library(flextable)
+library(rpart)
+library(dplyr)
+library(sqldf)
+# library(partykit)
+library(RODBC)
+# library(Hmisc)
+library(pastecs)
+# library(haven)
+# library(smbinning)
+# library(monobin)
+library(readxl)
+library(openxlsx)
+# library(odbc)
+# library(DBI)
+library(creditmodel)
+library(datasets)
+library(caret)
+library(openxlsx)
+library(tidyr)
+# library(readr)
+library(reshape2)
+library(Information)
+library(scorecard)
+# library(SciViews)
+# library(mltools)
+library(rio)
+library(janitor)
+library(gtsummary)
+library(cards)
+library(stringr)
+library(lubridate)
+library(forcats)
+library(tidyverse)
+library(hms)
+library(linelist)
+library(stringi)
+library(data.table)
+library(rmarkdown)
+# install.packages("mltools")
+library(mltools)
+library(Hmisc)
+## LẤY DATA từ sql server
+# rm(data_model)
+con <- dbConnect(odbc::odbc(),
+                 Driver   = "SQL Server",
+                 Server   = "HNI-QLRR-628\\SQLEXPRESS", 
+                 Database = "RRTD",
+                 Trusted_Connection = "Yes")
+
+
+data_bien_taisan <- dbGetQuery(con, "SELECT * FROM bien_tsbd")
+data_bien_tindung <- dbGetQuery(con, "SELECT * FROM bien_tindung") 
+data_bien_thunhap <- dbGetQuery(con, "SELECT * FROM bien_thunhap") 
+data_bien_thongtin <- dbGetQuery(con, "SELECT * FROM bien_thongtin")
+
+data_model <- data_bien_tindung %>% left_join(data_bien_taisan
+                                              , by =c("snapshot_date"="snapshot_date"
+                                                      ,"customer_id"="customer_id")
+                                              ,suffix = c("",".left")
+                                              ) %>% clean_names() %>%
+                left_join(data_bien_thunhap
+                          , by =c("snapshot_date"="snapshot_date"
+                                  ,"customer_id"="customer_id")
+                          ,suffix = c("",".left")
+                           ) %>% clean_names() %>%
+               left_join(data_bien_thongtin %>% select(everything(),-STT)
+                      , by =c("snapshot_date"="snapshot_date"
+                                ,"customer_id"="customer_id")
+                       ,suffix = c("",".left")
+                      ) %>% clean_names() %>%
+                mutate(across(where(is.numeric),~ replace_na(.x, 0))
+                       )
+
+# gán lại good/bad
+data_model$tag_gb[data_model$tag_gb=="GOOD"] <- 0
+data_model$tag_gb[data_model$tag_gb=="BAD"] <- 1
+
+##chia tập dữ liệu THEO OOT
+dev_data <- sqldf("select *
+                   from data_model where snapshot_date<'20240101'
+                   ")
+val_data <- sqldf("select  *
+                 from data_model where snapshot_date >='20240101'
+                  ")
+
+#bỏ snapshot_Date
+dev_data <- dev_data %>% select(everything(),-snapshot_date,-customer_id)
+val_data <- val_data %>% select(everything(),-snapshot_date,-customer_id)
+# names(val_data)
+
+# # chia tập dữ liệu auto theo RANDOM
+# train_test = train_test_split(dat = data, prop = 0.7, split_type = "Random",
+#                               occur_time = NULL, start_date = NULL, cut_date = NULL,
+#                               save_data = FALSE, note = FALSE)
+# # rm(train_test)
+# val_data = train_test$train
+# val_data = train_test$test
+
+# hàm tính IV
+
+# rm(bins)
+# class(val_data$snapshot_date)
+
+# val_data$tag_gb <- as.factor(val_data$tag_gb)
+
+bins <- woebin(dev_data, y = "tag_gb"
+              ,bin_num_limit=10, positive = "bad|0"
+              , method = "tree"
+              ,count_distr_limit=0.01
+              ,stop_limit=0.01
+              )  # hoặc "chimerge"
+
+
+# Xem chi tiết 1 biến
+bins$age
+bins$gioitinh
+
+# in ra excel
+hs <- createStyle(border ="TopBottomLeftRight",
+                  textDecoration = "BOLD", fontColour = "#FFFFFF", fontSize = 12,
+                  fontName = "Cambria Narrow", fgFill = "#4F80BD",wrapText=FALSE)
+
+openxlsx::write.xlsx(bins, "D:\\Data Minh\\TSCORE\\BSCORE\\var1.xlsx",rowNames=FALSE,
+                     colNames = TRUE, overwrite = TRUE,
+                     borders = "all",gridLines =TRUE
+                     ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
+                     ,headerStyle = hs,keepNA=FALSE)
+
+
+
+##lấy các biến có iv>=10%
+
+# Tinh PSI
+psi_1 <- get_psi_all(
+  dat=dev_data[,c(4:74)],
+  x_list = NULL,
+  target = NULL,
+  dat_test = val_data[,c(4:74)],
+  breaks_list = NULL,
+  occur_time = NULL,
+  start_date = NULL,
+  cut_date = NULL,
+  #oot_pct = 0.7,
+  pos_flag = NULL,
+  parallel = FALSE,
+  ex_cols = NULL,
+  as_table = FALSE,
+  g = 10,
+  bins_no = TRUE,
+  note = FALSE
+  )
+
+## gộp IV và PSI
+sheet_names <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\BSCORE\\var1.xlsx")  # extract sheet names
+
+combined <- sheet_names %>%
+  purrr::set_names() %>%
+  map(.f = ~import("D:\\Data Minh\\TSCORE\\BSCORE\\var1.xlsx", which = .x)) %>%
+  bind_rows(.id = "Biến") %>%
+  mutate(bad_rate = neg/count) %>%
+  group_by(variable) %>%
+  mutate(max_dis =max(count_distr)) %>%
+  ungroup() %>%
+  filter(total_iv >= 0.1 & max_dis<0.9) %>% # lấy các biến có iv>=10% và mức độ tập trung data <90%
+  left_join(psi_1 %>% data.frame(),by = c("variable"="Feature"))
+
+openxlsx::write.xlsx(combined, "D:\\Data Minh\\TSCORE\\BSCORE\\var3.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
+                     colNames = TRUE, overwrite = TRUE,
+                     borders = "all",gridLines =TRUE
+                     ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
+                     ,headerStyle = hs,keepNA=TRUE)
+
+
+########################## bin lại từng biến #########################
+dev_data$fmax_dpd_l6m<- cut(dev_data$max_dpd_l6m, #OK
+                            breaks = c("-Inf",3,9,34,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data$favg_usage_limit_l3m<- cut(dev_data$avg_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.7,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+
+dev_data$favg_usage_limit_l6m<- cut(dev_data$avg_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.65,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+dev_data$fmax_usage_limit_l3m<- cut(dev_data$max_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.95,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+dev_data$fmax_usage_limit_l6m<- cut(dev_data$max_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.8,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+dev_data$fmin_usage_limit_l3m<- cut(dev_data$min_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.7,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+dev_data$fmin_usage_limit_l6m<- cut(dev_data$min_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.8,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+dev_data$fmax_ost_l3m_over_current_ost<- cut(dev_data$max_ost_l3m_over_current_ost, #OK
+                                    breaks = c("-Inf",1.01,1.06,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+dev_data$favg_ost_l3m_over_current_ost<- cut(dev_data$avg_ost_l3m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.01,1.04,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+dev_data$fmax_ost_l6m_over_current_ost<- cut(dev_data$max_ost_l6m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.02,1.26,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+dev_data$favg_ost_l6m_over_current_ost<- cut(dev_data$avg_ost_l6m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.01,1.22,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+dev_data$fmax_arrear_l6m_ost<- cut(dev_data$max_arrear_l6m_ost, #OK
+                                             breaks = c("-Inf",0.01,0.06,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+dev_data$favg_ltv_l3m<- cut(dev_data$avg_ltv_l3m, #OK
+                                   breaks = c("-Inf",0.9,0.95,"Inf"),
+                                   include.lowest =TRUE,
+                                   right = FALSE)
+
+dev_data$favg_ltv_l6m<- cut(dev_data$avg_ltv_l6m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data$fmax_ltv_l3m<- cut(dev_data$max_ltv_l3m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data$fmax_ltv_l6m<- cut(dev_data$max_ltv_l6m, #OK
+                            breaks = c("-Inf",0.85,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data$fmin_ltv_l6m<- cut(dev_data$min_ltv_l6m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data$favg_ltv_bds_l3m<- cut(dev_data$avg_ltv_bds_l3m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data$favg_ltv_bds_l6m<- cut(dev_data$avg_ltv_bds_l6m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+dev_data$fmax_ltv_bds_l3m<- cut(dev_data$max_ltv_bds_l3m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+dev_data$fmax_ltv_bds_l6m<- cut(dev_data$max_ltv_bds_l6m, #OK
+                                breaks = c("-Inf",0.85,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+dev_data$fmin_ltv_bds_l3m<- cut(dev_data$min_ltv_bds_l3m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+dev_data$fmin_ltv_bds_l6m<- cut(dev_data$min_ltv_bds_l6m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+
+######################### tính WOE sau khi bin lại ###################
+##woe numeric
+
+# names(dev_data)
+bins_woe_num = woebin(dev_data[,c(4,75:97)], y = "tag_gb",
+                  ,positive="bad|0" #### bad|0 là tag_gb có bad=1
+                  ,check_cate_num=TRUE
+                  ,no_cores = 1
+                  ,count_distr_limit =0.01)
+
+##woe NOT numeric
+names(dev_data)
+# glimpse(val_data$AVG_UNIT_PRICE_MORTGAGE)
+
+breaks_list = list(
+  GROUP_PRODUCT = c("AT LEAST CL OR MG","AT LEAST PBL","OTHER")
+  # ,LAZY_PAYER_L12M=c("Y","N")
+  )
+
+
+bins_woe_cate = woebin(dev_data, y = "tag_gb",
+                ,positive="bad|0" #### bad|0 là tag_gb có bad=1
+                ,check_cate_num=TRUE, no_cores = 1)
+
+## APPLY WOE vao OBS
+dt_woe_1 = woebin_ply(dev_data[,c(4,75:97)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data goc
+
+dt_woe_1$tag_gb <-as.numeric(dt_woe_1$tag_gb)
+
+# dt_woe2 = woebin_ply(val_data[,c(4,c(5:51))], bins=bins_woe_num, to ='bin')## apply cac bin vao data goc
+# dt_woe_1$tag_gb <-as.factor(dt_woe_1$tag_gb)
+# names(dt_woe_1)
+# rm(dt_woe)
+
+########################## CHẠY MODEL #########################
+## run MODEL full
+m1 = glm(tag_gb ~ ., family = binomial(), data = dt_woe_1)
+summary(m1)
+
+## loại các biến pvalue >0.05 và coeff >0
+coef_table <- as.data.frame(summary(m1)$coefficients) %>% clean_names() %>%
+  filter(estimate >0 | pr_z >0.05) %>% rownames_to_column()
+
+##chay lai model lan 2
+
+vars_r2 <- coef_table[coef_table$rowname != "(Intercept)","rowname"] # danh sách loại
+
+m2 <- update(m1, as.formula(paste(". ~ . -", paste(vars_r2, collapse = " - "))))
+
+summary(m2)
+
+## loại các biến pvalue >0.05 và coeff >0
+coef_table_r2 <- as.data.frame(summary(m2)$coefficients) %>% clean_names() %>%
+  filter(estimate >0 | pr_z >0.05) %>% rownames_to_column()
+
+##chay lai model lan 3
+
+vars_r3 <- coef_table_r2[coef_table_r2$rowname != "(Intercept)","rowname"] # danh sách giữ lại
+
+m3 <- update(m2, as.formula(paste(". ~ . -", paste(vars_r3, collapse = " - "))))
+
+
+summary(m3)
+
+##chay correl
+
+final_var <- attr(terms(m3), "term.labels")
+
+dt_corr <- dt_woe_1 %>% select(all_of(final_var))
+
+res <- cor(dt_corr)
+
+to_drop <- findCorrelation(res, cutoff = 0.85, names = TRUE, exact = TRUE)# Chọn biến nên loại với ngưỡng |r| > 0.85
+
+to_keep <- setdiff(final_var, to_drop)# Giữ lại phần còn lại
+
+##chay lai model lan 4 (sau khi loại correl)
+
+vars_r4 <- to_keep # danh sách giữ lại
+
+form_r4 <- as.formula(paste("tag_gb ~", paste(vars_r4, collapse = " + ")))
+
+m4 <- glm(form_r4, family = binomial(), data = dt_woe_1)
+
+
+summary(m4)
+
+##chay correl lần 2
+
+final_var_2 <- attr(terms(m4), "term.labels")
+
+dt_corr_2 <- dt_woe_1 %>% select(all_of(final_var_2))
+
+res_2 <- cor(dt_corr_2)
+
+to_drop_2 <- findCorrelation(res_2, cutoff = 0.85, names = TRUE, exact = TRUE)# Chọn biến nên loại với ngưỡng |r| > 0.85
+
+to_keep_2 <- setdiff(final_var_2, to_drop_2)# Giữ lại phần còn lại
+
+##chay lai model lan 5 (sau khi loại thủ công)
+
+vars_r5 <- c("fmax_usage_limit_l6m_woe") # danh sách loại
+
+m5 <- update(m4, as.formula(paste(". ~ . -", paste(vars_r5, collapse = " - "))))
+
+
+summary(m5)
+
+
+##VIF 
+vif_var <-vif(m5)
+## QUY DOI RA DIEM (da calibrate)
+
+names(dt_score_dev)
+
+dt_score_dev <- dt_woe_1 %>% select(all_of(attr(terms(m5), "term.labels")),tag_gb)
+
+card2 = scorecard2(bins=bins_woe_num
+                     ,points0 = 600
+                     ,pdo = 50 
+                     ,odds0 = 19
+                     ,positive="bad|0"
+                     ,dt=dt_score_dev
+                     ,y="tag_gb"
+                   ,no_cores = 2)
+
+# card2 = scorecard(bins=bins_woe_num, m4, points0 = 600, odds0 = 19, pdo = 50,
+#           basepoints_eq0 = FALSE, digits = 0)
+
+#score1 = scorecard_ply(data_2, card2)
+
+
+
+score2 = scorecard_ply(dt_score_dev %>% mutate(fmax_dpd_l6m=fmax_dpd_l6m_woe
+                                               ,fmax_usage_limit_l3m=fmax_usage_limit_l3m_woe
+                                               ,fmax_arrear_l6m_ost=fmax_arrear_l6m_ost_woe
+                                               ,favg_ltv_l6m=favg_ltv_l6m_woe
+                                               ,tag_gb =as.numeric(tag_gb)
+                                               ) %>%
+                         select(fmax_dpd_l6m,fmax_usage_limit_l3m
+                                ,fmax_arrear_l6m_ost,favg_ltv_l6m,tag_gb)
+                       ,card2
+                       ,only_total_score = FALSE
+                       ,var_kp="tag_gb")
+
+# x <- score2 %>% select(fmax_dpd_l6m_points) %>% distinct()
+
+## apply cho tập val
+
+val_data$fmax_dpd_l6m<- cut(val_data$max_dpd_l6m, #OK
+                            breaks = c("-Inf",3,9,34,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+val_data$favg_usage_limit_l3m<- cut(val_data$avg_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.7,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+
+val_data$favg_usage_limit_l6m<- cut(val_data$avg_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.65,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+val_data$fmax_usage_limit_l3m<- cut(val_data$max_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.95,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+val_data$fmax_usage_limit_l6m<- cut(val_data$max_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.8,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+val_data$fmin_usage_limit_l3m<- cut(val_data$min_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.7,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+val_data$fmin_usage_limit_l6m<- cut(val_data$min_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.8,0.95,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+val_data$fmax_ost_l3m_over_current_ost<- cut(val_data$max_ost_l3m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.01,1.06,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+val_data$favg_ost_l3m_over_current_ost<- cut(val_data$avg_ost_l3m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.01,1.04,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+val_data$fmax_ost_l6m_over_current_ost<- cut(val_data$max_ost_l6m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.02,1.26,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+val_data$favg_ost_l6m_over_current_ost<- cut(val_data$avg_ost_l6m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.01,1.22,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+val_data$fmax_arrear_l6m_ost<- cut(val_data$max_arrear_l6m_ost, #OK
+                                   breaks = c("-Inf",0.01,0.06,"Inf"),
+                                   include.lowest =TRUE,
+                                   right = FALSE)
+
+val_data$favg_ltv_l3m<- cut(val_data$avg_ltv_l3m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+val_data$favg_ltv_l6m<- cut(val_data$avg_ltv_l6m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+val_data$fmax_ltv_l3m<- cut(val_data$max_ltv_l3m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+val_data$fmax_ltv_l6m<- cut(val_data$max_ltv_l6m, #OK
+                            breaks = c("-Inf",0.85,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+val_data$fmin_ltv_l6m<- cut(val_data$min_ltv_l6m, #OK
+                            breaks = c("-Inf",0.9,0.95,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+val_data$favg_ltv_bds_l3m<- cut(val_data$avg_ltv_bds_l3m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+val_data$favg_ltv_bds_l6m<- cut(val_data$avg_ltv_bds_l6m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+val_data$fmax_ltv_bds_l3m<- cut(val_data$max_ltv_bds_l3m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+val_data$fmax_ltv_bds_l6m<- cut(val_data$max_ltv_bds_l6m, #OK
+                                breaks = c("-Inf",0.85,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+val_data$fmin_ltv_bds_l3m<- cut(val_data$min_ltv_bds_l3m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+val_data$fmin_ltv_bds_l6m<- cut(val_data$min_ltv_bds_l6m, #OK
+                                breaks = c("-Inf",0.9,0.95,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+dt_woe_val = woebin_ply(val_data[,c(4,75:97)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data val
+###### TINH PD CHO TAP VAL và DEV
+###dev
+
+# names(dt_woe_1)
+# names(pd_val_data)
+# rm(pd_val_data)
+
+pd_dev_data <- dt_woe_1 %>% select(tag_gb,all_of(attr(terms(m5), "term.labels"))) %>%
+  mutate(
+    score_uncali =
+      (-4.2631) + 
+      fmax_dpd_l6m_woe * (-0.7694) +
+      favg_usage_limit_l3m_woe * (-0.6873) +
+      favg_ost_l6m_over_current_ost_woe * (-0.5953) +
+      fmax_arrear_l6m_ost_woe * (-0.3924) +
+      favg_ltv_l6m_woe * (-0.1970)
+    ,pd = round(exp(score_uncali)/(1+exp(score_uncali)),3)
+    ,score_uncali_binning = round(score_uncali*-100,0)
+  ) %>% data.frame()
+
+## lấy ngưỡng cutoff
+pd_dev_data <- pd_dev_data %>% arrange(pd)
+
+cut_off <- quantile(pd_dev_data$pd,0.8,na.rm=TRUE)
+
+## cắt điểm thang 10  
+
+pd_dev_data <- pd_dev_data %>% mutate(bin = ntile(score_uncali_binning, 10)
+                                      )
+
+binning_train <- pd_dev_data %>% group_by(bin) %>%
+           summarise(max_bin = max(score_uncali_binning)
+                     ,min_bin = min(score_uncali_binning))
+## tính gini
+data_gini_dev <- pd_dev_data %>% select(score_uncali_binning,tag_gb,bin) %>% 
+  # left_join(cut_bin_pd_10,by = c("score_uncali_binning"="BinVal")) %>%
+  group_by(bin) %>%
+  summarise(total_obs = n()
+            ,bad_obs = sum(tag_gb==1)
+            ,good_obs = sum(tag_gb==0)
+            ) %>%
+  mutate(percent_dis_train = total_obs/sum(total_obs)
+        ,percent_bad = bad_obs/sum(bad_obs)
+         ,percent_good = good_obs/sum(good_obs)
+         ,bad_rate = bad_obs/sum(total_obs)
+         ,cum_percent_bad =cumsum(percent_bad)
+         ,cum_percent_good =cumsum(percent_good)
+         ,gini_thanhphan = dplyr::if_else(lag(cum_percent_bad) %in% c(0, NA)
+                                          ,cum_percent_good*0.5*cum_percent_bad
+                                          ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
+                                          )
+         ,gini_total = (0.5-sum(gini_thanhphan))/0.5
+         )
+
+#val
+names(dt_woe_val)
+
+pd_val_data <- dt_woe_val %>% select(tag_gb,all_of(attr(terms(m5), "term.labels"))) %>%
+  mutate(
+    score_uncali =
+      (-4.2631) + 
+      fmax_dpd_l6m_woe * (-0.7694) +
+      favg_usage_limit_l3m_woe * (-0.6873) +
+      favg_ost_l6m_over_current_ost_woe * (-0.5953) +
+      fmax_arrear_l6m_ost_woe * (-0.3924) +
+      favg_ltv_l6m_woe * (-0.1970)
+    ,pd = round(exp(score_uncali)/(1+exp(score_uncali)),3)
+    ,score_uncali_binning = round(score_uncali*-100,0)
+    ,tag_gb_predict = case_when(pd>=cut_off ~ 1,TRUE ~ 0)
+    ,bin = case_when(score_uncali_binning <= binning_train$max_bin[binning_train$bin == 1] ~ 1
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 2] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 2] ~ 2
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 3] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 3] ~ 3
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 4] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 4] ~ 4
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 5] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 5] ~ 5
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 6] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 6] ~ 6
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 7] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 7] ~ 7
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 8] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 8] ~ 8
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 9] & score_uncali_binning<=binning_train$max_bin[binning_train$bin == 9] ~ 9
+                    ,score_uncali_binning >binning_train$min_bin[binning_train$bin == 10] ~ 10
+    )
+  ) %>% data.frame()
+
+
+data_gini_val <- pd_val_data %>% select(bin,tag_gb) %>% 
+  group_by(bin) %>%
+  summarise(total_obs = n()
+            ,bad_obs = sum(tag_gb==1)
+            ,good_obs = sum(tag_gb==0)
+            ) %>%
+  mutate(percent_dis_val = total_obs/sum(total_obs)
+          ,percent_bad = bad_obs/sum(bad_obs)
+         ,percent_good = good_obs/sum(good_obs)
+         ,bad_rate = bad_obs/sum(total_obs)
+         ,cum_percent_bad =cumsum(percent_bad)
+         ,cum_percent_good =cumsum(percent_good)
+         ,gini_thanhphan = dplyr::if_else(lag(cum_percent_bad) %in% c(0, NA),cum_percent_good*0.5*cum_percent_bad
+                                          ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
+         )
+         ,gini_total = (0.5-sum(gini_thanhphan))/0.5
+         )
+### tính PSI
+psi_model <- data_gini_dev %>% 
+  left_join(data_gini_val,by = c("bin"="bin")) %>% 
+  mutate(psi_component_train_test = round((percent_dis_train-percent_dis_val)*log(percent_dis_train/percent_dis_val),2)
+         ,psi_sum_train_test = sum(psi_component_train_test)
+  )
+
+### tính f1score
+
+library(MLmetrics)
+
+# Y_true, Y_pred là vector nhị phân {0,1}
+Precision(y_pred = pd_val_data$tag_gb_predict, y_true = pd_val_data$tag_gb, positive = "1")
+Recall(y_pred = pd_val_data$tag_gb_predict,y_true = pd_val_data$tag_gb, positive = "1")
+F1_Score(y_pred = pd_val_data$tag_gb_predict, y_true = pd_val_data$tag_gb, positive = "1")
+
+
+
+
+
+
+
