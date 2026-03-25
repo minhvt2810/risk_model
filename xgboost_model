@@ -1,0 +1,577 @@
+library(ggplot2)
+# library(flextable)
+library(rpart)
+library(dplyr)
+library(sqldf)
+# library(partykit)
+library(RODBC)
+# library(Hmisc)
+library(pastecs)
+# library(haven)
+# library(smbinning)
+# library(monobin)
+library(readxl)
+library(openxlsx)
+# library(odbc)
+# library(DBI)
+library(creditmodel)
+library(datasets)
+library(caret)
+library(openxlsx)
+library(tidyr)
+# library(readr)
+library(reshape2)
+library(Information)
+library(scorecard)
+# library(SciViews)
+# library(mltools)
+library(rio)
+library(janitor)
+library(gtsummary)
+library(cards)
+library(stringr)
+library(lubridate)
+library(forcats)
+library(tidyverse)
+library(hms)
+library(linelist)
+library(stringi)
+library(data.table)
+library(rmarkdown)
+# install.packages("mltools")
+library(mltools)
+library(caret)
+# install.packages("xgboost")       # core XGBoost
+# install.packages("Matrix")        # tạo sparse matrix (nếu cần)
+# install.packages("caret")         # tiện ích chia tập, CV
+# install.packages("SHAPforxgboost")# giải thích mô hình (tùy chọn)
+library(MLmetrics)
+
+library(xgboost)
+library(Matrix)
+library(SHAPforxgboost)
+library(pROC)
+
+# library(Hmisc)
+## LẤY DATA từ sql server
+# rm(data_model)
+con <- dbConnect(odbc::odbc(),
+                 Driver   = "SQL Server",
+                 Server   = "HNI-QLRR-628\\SQLEXPRESS", 
+                 Database = "RRTD",
+                 Trusted_Connection = "Yes")
+
+
+data_bien_taisan <- dbGetQuery(con, "SELECT * FROM bien_tsbd")
+data_bien_tindung <- dbGetQuery(con, "SELECT * FROM bien_tindung") 
+data_bien_thunhap <- dbGetQuery(con, "SELECT * FROM bien_thunhap") 
+data_bien_thongtin <- dbGetQuery(con, "SELECT * FROM bien_thongtin")
+
+data_model <- data_bien_tindung %>% left_join(data_bien_taisan
+                                              , by =c("snapshot_date"="snapshot_date"
+                                                      ,"customer_id"="customer_id")
+                                              ,suffix = c("",".left")
+) %>% clean_names() %>%
+  left_join(data_bien_thunhap
+            , by =c("snapshot_date"="snapshot_date"
+                    ,"customer_id"="customer_id")
+            ,suffix = c("",".left")
+  ) %>% clean_names() %>%
+  left_join(data_bien_thongtin %>% select(everything(),-STT)
+            , by =c("snapshot_date"="snapshot_date"
+                    ,"customer_id"="customer_id")
+            ,suffix = c("",".left")
+  ) %>% clean_names() %>%
+  mutate(across(where(is.numeric),~ replace_na(.x, 0))
+  )
+
+# gán lại good/bad
+data_model$tag_gb[data_model$tag_gb=="GOOD"] <- 0
+data_model$tag_gb[data_model$tag_gb=="BAD"] <- 1
+
+##chia tập dữ liệu THEO OOT
+dev_data <- sqldf("select *
+                   from data_model where snapshot_date<'20230930'
+                   ")
+
+test_data <- sqldf("select *
+                   from data_model where snapshot_date>='20230930'
+                   and snapshot_date<'20240930'
+                   ")
+
+val_data <- sqldf("select  *
+                 from data_model where snapshot_date >='20240930'
+                  ")
+
+#bỏ snapshot_Date
+dev_data <- dev_data %>% select(everything(),-snapshot_date,-customer_id)
+test_data <- test_data %>% select(everything(),-snapshot_date,-customer_id)
+val_data <- val_data %>% select(everything(),-snapshot_date,-customer_id)
+
+
+## tính IV+ LỌC concentration+lọc IV
+bins <- woebin(dev_data, y = "tag_gb"
+               ,bin_num_limit=10, positive = "bad|0"
+               , method = "tree"
+               ,count_distr_limit=0.01
+               ,stop_limit=0.01)
+
+# lapply(list_df, function(df) { nrow(df) })
+
+list_var <- data.frame()
+
+for (i in bins) {
+  x <- data.frame(i)
+  list_var <- rbind(x,list_var)
+}
+
+list_var <- list_var %>%
+  select(everything(),-breaks,-is_special_values) %>% 
+  mutate(bad_rate = neg/count) %>%
+  group_by(variable) %>%
+  mutate(max_dis =max(count_distr)) %>%
+  ungroup() %>%
+  filter(total_iv >= 0.1 & max_dis<0.9) # lấy các biến có iv>=10% và mức độ tập trung data <90%
+
+# lọc correlation
+name_var <- unique(list_var$variable)
+
+var_cor <- dev_data %>% select(all_of(name_var)) %>% cor()
+
+to_drop <- findCorrelation(var_cor, cutoff = 0.85, names = TRUE, exact = TRUE)# Chọn biến nên loại với ngưỡng |r| > 0.85
+
+# chia du lieu
+x_train <- subset(dev_data %>% select(-all_of(to_drop),-total_ost,-max_dpd,-mob), select = -c(tag_gb))
+y_train <- dev_data$tag_gb
+
+x_test <- subset(test_data %>% select(-all_of(to_drop),-total_ost,-max_dpd,-mob), select = -c(tag_gb))
+y_test <- test_data$tag_gb
+
+x_val <- subset(val_data %>% select(-all_of(to_drop),-total_ost,-max_dpd,-mob), select = -c(tag_gb))
+y_val <- val_data$tag_gb
+# Tạo DMatrix
+dtrain <- xgb.DMatrix(data = as.matrix(x_train), label = y_train)
+dtest  <- xgb.DMatrix(data = as.matrix(x_test),  label = y_test)
+dval  <- xgb.DMatrix(data = as.matrix(x_val),  label = y_val)
+# names(x_train)
+# tham số ban đầu
+
+params_bin <- list(
+  objective        = "binary:logistic",
+  eval_metric      = "auc",
+  max_depth        = 3,
+  eta              = 0.1,        # learning rate
+  subsample        = 0.8,
+  colsample_bytree = 0.8,
+  min_child_weight = 1
+)
+
+## trainning
+# c1: chạy theo early_stopping_rounds
+watchlist <- list(train = dtrain, eval = dtest)
+
+set.seed(2026)
+model_bin <- xgb.train(
+  params = params_bin,
+  data = dtrain,
+  nrounds = 500,
+  watchlist = watchlist,
+  early_stopping_rounds = 30,
+  print_every_n = 20
+)
+
+model_bin$best_iteration
+model_bin$best_score
+model_bin$evaluation_log
+model_bin$best_ntreelimit
+
+#importance các biến train full model
+imp <- xgb.importance(feature_names = colnames(x_train), model = model_bin)
+xgb.plot.importance(imp)
+
+#importance các biến lũy kế đến vòng tối ưu
+best_iter <- model_bin$best_iteration
+num_class <- ifelse(is.null(model_bin$params$num_class), 1, model_bin$params$num_class)
+
+max_tree <- best_iter * num_class - 1
+
+dt <- xgb.model.dt.tree(model = model_bin)
+
+
+dt_best <- dt %>%
+  dplyr::filter(Tree <= max_tree, Feature != "Leaf")
+
+
+importance_best <- dt_best %>%
+  dplyr::group_by(Feature) %>%
+  dplyr::summarise(
+    quality  = sum(Quality),
+    cover = sum(Cover),
+    freq  = dplyr::n(),     # số lần feature được chọn để split
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(quality))   # Gain là thước đo chính
+
+
+ggplot(importance_best, aes(x = reorder(Feature, quality), ## VẼ importance
+                     y = quality)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = paste("Feature Importance tại Best Iteration =", model_bin$best_iteration),
+    x = "Feature",
+    y = "quality"
+  ) +
+  theme_minimal(base_size = 14)
+# loại các biến tương đồng
+
+# chia lại du lieu
+x_train_re <- subset(x_train %>% select(
+                                      -max_dpd_l3m,-avg_arrear_l6m_ost,-min_arrear_l3m_ost
+                                      ,-min_ost_l6m_over_current_ost,-avg_ost_l3m_over_current_ost
+                                      ,-min_ost_l3m_over_current_ost,-avg_arrear_l3m_ost
+                                      ,-n_gt_30_dpd_l3m,-month_since_last_dpd_l3m
+                                      ,-min_arrear_l6m_ost,-n_gt_10_dpd_l3m
+                                      ,-n_gt_90_dpd_l6m,-max_dti_l12m
+                                      )
+                  )
+
+x_test_re <- subset(x_test %>% select(
+                                      -max_dpd_l3m,-avg_arrear_l6m_ost,-min_arrear_l3m_ost
+                                      ,-min_ost_l6m_over_current_ost,-avg_ost_l3m_over_current_ost
+                                      ,-min_ost_l3m_over_current_ost,-avg_arrear_l3m_ost
+                                      ,-n_gt_30_dpd_l3m,-month_since_last_dpd_l3m
+                                      ,-min_arrear_l6m_ost,-n_gt_10_dpd_l3m
+                                      ,-n_gt_90_dpd_l6m,-max_dti_l12m
+                                      )
+                 )
+
+x_val_re <- subset(x_val %>% select(
+                                    -max_dpd_l3m,-avg_arrear_l6m_ost,-min_arrear_l3m_ost
+                                    ,-min_ost_l6m_over_current_ost,-avg_ost_l3m_over_current_ost
+                                    ,-min_ost_l3m_over_current_ost,-avg_arrear_l3m_ost
+                                    ,-n_gt_30_dpd_l3m,-month_since_last_dpd_l3m
+                                    ,-min_arrear_l6m_ost,-n_gt_10_dpd_l3m
+                                    ,-n_gt_90_dpd_l6m,-max_dti_l12m
+                                    )
+                )
+# Tạo lại DMatrix
+dtrain_re <- xgb.DMatrix(data = as.matrix(x_train_re), label = y_train)
+dtest_re  <- xgb.DMatrix(data = as.matrix(x_test_re),  label = y_test)
+dval_re  <- xgb.DMatrix(data = as.matrix(x_val_re),  label = y_val)
+
+## trainning lại model
+watchlist <- list(train = dtrain_re, eval = dtest_re)
+
+set.seed(2026)
+model_bin <- xgb.train(
+  params = params_bin,
+  data = dtrain_re,
+  nrounds = 500,
+  watchlist = watchlist,
+  early_stopping_rounds = 30,
+  print_every_n = 20
+)
+#importance các biến lũy kế Tree cuối cùng đến vòng tối ưu
+best_iter <- model_bin$best_iteration
+num_class <- ifelse(is.null(model_bin$params$num_class), 1, model_bin$params$num_class)
+
+max_tree <- best_iter * num_class - 1
+
+dt <- xgb.model.dt.tree(model = model_bin)
+
+
+dt_best <- dt %>%
+  dplyr::filter(Tree <= max_tree, Feature != "Leaf")
+
+
+importance_best <- dt_best %>%
+  group_by(Feature) %>%
+  summarise(
+    quality  = sum(Quality),
+    cover = sum(Cover),
+    freq  = dplyr::n(),     # số lần feature được chọn để split
+    .groups = "drop"
+  ) %>%
+  arrange(desc(quality))   # Gain là thước đo chính
+
+
+ggplot(importance_best, aes(x = reorder(Feature, quality), ## VẼ importance
+                            y = quality)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = paste("Feature Importance tại Best Iteration =", model_bin$best_iteration),
+    x = "Feature",
+    y = "quality"
+  ) +
+  theme_minimal(base_size = 14)
+
+# biểu đồ auc và gini train vs test tại best iter
+
+best_iter <- model_bin$best_iteration
+elog <- model_bin$evaluation_log %>% mutate(gini_train = 2*train_auc-1
+                                            ,gini_test = 2*eval_auc-1)
+
+df_plot <- elog[, c("iter", "gini_train", "gini_test")]
+df_long <- melt(df_plot, id.vars = "iter",
+                variable.name = "dataset",
+                value.name = "gini")
+
+
+ggplot(df_long, aes(x = iter, y = gini, color = dataset)) +### vẽ THEO GINI
+  geom_line(linewidth = 1) +
+  geom_vline(xintercept = best_iter,
+             linetype = "dashed",
+             color = "darkgreen",
+             linewidth = 1) +
+  annotate("text", x = best_iter, y = max(df_long$gini),
+           label = paste("best_iteration =", best_iter),
+           vjust = -0.5, color = "darkgreen") +
+  labs(title = "Train gini & Eval gini theo Round với Best Iteration",
+       x = "Round", y = "gini") +
+  theme_minimal(base_size = 13)
+
+
+# tính gini trên tập val
+pd_val <- predict(model_bin, dval, ntreelimit = model_bin$best_ntreelimit)
+
+
+y_true <- getinfo(dval, "label")
+
+auc_val <- auc(response = y_true, predictor = pd_val)
+
+gini_val <- 2*auc_val-1
+
+
+roc_obj <- roc(getinfo(dval, "label"), pd_val)###vẽ roc
+plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - XGBoost")
+
+# sau khi train lại
+pd_val <- predict(model_bin, dval_re, ntreelimit = model_bin$best_ntreelimit)
+
+
+y_true <- getinfo(dval_re, "label")
+
+auc_val <- auc(response = y_true, predictor = pd_val)
+
+gini_val <- 2*auc_val-1
+
+
+roc_obj <- roc(getinfo(dval_re, "label"), pd_val)###vẽ roc
+plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve - XGBoost")
+
+# tính precision, recall, f1score
+pd_train <- predict(model_bin, dtrain, ntreelimit = model_bin$best_ntreelimit)
+pd_test <- predict(model_bin, dtest, ntreelimit = model_bin$best_ntreelimit)
+
+# tính lại sau khi re train
+pd_train <- predict(model_bin, dtrain_re, ntreelimit = model_bin$best_ntreelimit)
+pd_test <- predict(model_bin, dtest_re, ntreelimit = model_bin$best_ntreelimit)
+
+result_train <- data.frame(
+  actual = y_train,
+  predict = pd_train) %>% arrange(predict)
+
+result_test <- data.frame(
+  actual = y_test,
+  predict = pd_test) %>% arrange(predict)
+
+
+cut_off <- quantile(result_train$predict,0.8,na.rm=TRUE)###cutoff tập train
+
+result_val <- data.frame(
+  actual = y_val,
+  pd = pd_val,
+  predict = case_when(pd_val >=cut_off ~ 1,TRUE ~ 0)
+) %>% arrange(pd)
+
+hieu_qua <- data.frame(precision = Precision(y_pred = result_val$predict, y_true = result_val$actual, positive = "1")
+                       ,recall = Recall(y_pred = result_val$predict,y_true = result_val$actual, positive = "1")
+                       ,f1_score = F1_Score(y_pred = result_val$predict, y_true = result_val$actual, positive = "1")
+                       )
+# quy ra score TẬP TRAIN
+
+pdo <- 50
+base_score <- 600
+factor <- pdo/log(2)
+odd <- 20
+offset <- base_score - factor*log(odd)
+
+result_train_score <- result_train %>% 
+  mutate(odds = (1-predict)/predict
+         ,score_cali = round(offset + factor*log(odds),0)
+          ,bin = ntile(score_cali, 10))
+
+binning_train <- result_train_score %>% group_by(bin) %>%
+  summarise(max_bin = max(score_cali)
+            ,min_bin = min(score_cali)
+            ,cnt_obs_train = n()) %>%
+  mutate(pct_obs_train = cnt_obs_train/sum(cnt_obs_train))
+
+# tính PSI
+result_test_score <- result_test %>% ## tính %obs tập test
+  mutate(odds = (1-predict)/predict
+         ,score_cali = round(offset + factor*log(odds),0)
+         ,bin = case_when(score_cali <= binning_train$max_bin[binning_train$bin == 1] ~ 1
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 2] & score_cali<=binning_train$max_bin[binning_train$bin == 2] ~ 2
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 3] & score_cali<=binning_train$max_bin[binning_train$bin == 3] ~ 3
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 4] & score_cali<=binning_train$max_bin[binning_train$bin == 4] ~ 4
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 5] & score_cali<=binning_train$max_bin[binning_train$bin == 5] ~ 5
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 6] & score_cali<=binning_train$max_bin[binning_train$bin == 6] ~ 6
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 7] & score_cali<=binning_train$max_bin[binning_train$bin == 7] ~ 7
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 8] & score_cali<=binning_train$max_bin[binning_train$bin == 8] ~ 8
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 9] & score_cali<=binning_train$max_bin[binning_train$bin == 9] ~ 9
+                    ,score_cali >binning_train$min_bin[binning_train$bin == 10] ~ 10
+                    )
+         ) %>%
+  group_by(bin) %>%
+  summarise(cnt_obs_test = n()
+            ) %>%
+  mutate(pct_obs_test = cnt_obs_test/sum(cnt_obs_test))
+
+
+result_val_score <- result_val %>% ## tính %obs tập train
+  mutate(odds = (1-pd)/pd
+         ,score_cali = round(offset + factor*log(odds),0)
+         ,bin = case_when(score_cali <= binning_train$max_bin[binning_train$bin == 1] ~ 1
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 2] & score_cali<=binning_train$max_bin[binning_train$bin == 2] ~ 2
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 3] & score_cali<=binning_train$max_bin[binning_train$bin == 3] ~ 3
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 4] & score_cali<=binning_train$max_bin[binning_train$bin == 4] ~ 4
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 5] & score_cali<=binning_train$max_bin[binning_train$bin == 5] ~ 5
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 6] & score_cali<=binning_train$max_bin[binning_train$bin == 6] ~ 6
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 7] & score_cali<=binning_train$max_bin[binning_train$bin == 7] ~ 7
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 8] & score_cali<=binning_train$max_bin[binning_train$bin == 8] ~ 8
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 9] & score_cali<=binning_train$max_bin[binning_train$bin == 9] ~ 9
+                          ,score_cali >binning_train$min_bin[binning_train$bin == 10] ~ 10
+         )
+  ) %>%
+  group_by(bin) %>%
+  summarise(cnt_obs_val = n()) %>%
+  mutate(pct_obs_val = cnt_obs_val/sum(cnt_obs_val))
+
+
+psi_model <- binning_train %>% 
+  left_join(result_test_score,by = c("bin"="bin")) %>% 
+  left_join(result_val_score,by = c("bin"="bin")) %>%
+  mutate(psi_component_train_test = round((pct_obs_train-pct_obs_test)*log(pct_obs_train/pct_obs_test),2)
+         ,psi_component_train_val = round((pct_obs_train-pct_obs_val)*log(pct_obs_train/pct_obs_val),2)
+         ,psi_sum_train_test = sum(psi_component_train_test)
+         ,psi_sum_train_val = sum(psi_component_train_val)
+         )
+
+### TỔNG HỢP CÁC CHỈ TIÊU
+
+hieuqua_model <- data.frame(gini_train = elog$gini_train[elog$iter == model_bin$best_iteration]
+                            ,gini_test = elog$gini_test[elog$iter == model_bin$best_iteration]
+                            ,gini_val = gini_val
+                            ,psi_sum_train_test = psi_model$psi_sum_train_test[psi_model$bin ==10]
+                            ,psi_sum_train_val = psi_model$psi_sum_train_val[psi_model$bin ==10]
+                            ,precision_val = hieu_qua$precision
+                            ,recall_val = hieu_qua$recall
+                            ,f1_score_val = hieu_qua$f1_score
+                            )
+
+# # c2: chạy theo chọn elbow
+# 
+# params <- list(
+#   objective        = "binary:logistic",
+#   eval_metric      = "auc",
+#   max_depth        = 4,
+#   eta              = 0.05,
+#   subsample        = 0.8,
+#   colsample_bytree = 0.8
+# )
+# 
+# nrounds_max <- 1000
+# watchlist <- list(train = dtrain, eval = dtest)
+# 
+# 
+# model_bin <- xgb.train(
+#   params = params,
+#   data = dtrain,
+#   nrounds = nrounds_max,
+#   watchlist = watchlist,
+#   print_every_n = 50
+# )
+# 
+# 
+# elog <- model_bin$evaluation_log
+# scores <- elog$eval_auc
+# # cột "iter", "train_auc", "eval_auc"
+# 
+# 
+# # ====== Hàm tìm elbow (Kneedle-like) cho chuỗi score tăng dần ======
+# find_elbow_kneedle <- function(scores) {
+#   # scores: vector numeric (ví dụ AUC theo vòng), kỳ vọng tăng rồi phẳng
+#   n <- length(scores)
+#   x <- seq_len(n)
+#   
+#   # Chuẩn hóa về [0,1]
+#   xn <- (x - min(x)) / (max(x) - min(x))
+#   yn <- (scores - min(scores)) / (max(scores) - min(scores))
+#   
+#   # Khoảng cách dọc đến đường chéo y = x (trong không gian chuẩn hóa)
+#   diff <- yn - xn
+#   
+#   # Điểm elbow là nơi diff đạt cực đại
+#   elbow_idx <- which.max(diff)
+#   
+#   list(index = elbow_idx, score = scores[elbow_idx], diff = diff)
+# }
+# 
+# # Áp dụng cho eval_auc
+# elbow <- find_elbow_kneedle(elog$eval_auc)
+# elbow$index
+# elbow$score
+# 
+# #vẽ elbow
+# 
+# df_plot <- data.frame(iter = elog$iter, score = elog$eval_auc)
+# 
+# ggplot(df_plot, aes(x = iter, y = score)) +
+#   geom_line(color = "#2E86C1", linewidth = 0.9) +
+#   geom_vline(xintercept = elbow$index, linetype = "dashed", color = "#C0392B") +
+#   geom_point(aes(x = elbow$index, y = elbow$score), color = "#C0392B", size = 3) +
+#   labs(
+#     title = "Elbow plot",
+#     subtitle = paste0("Elbow ≈ vòng ", elbow$index, " | score=", round(elbow$score, 5)),
+#     x = "Vòng lặp (iter)",
+#     y = "Điểm số (ví dụ: AUC trên eval)"
+#   )
+# 
+# # tính importance các biến
+# imp <- xgb.importance(feature_names = colnames(x_train), model = model_bin)
+# xgb.plot.importance(imp, top_n = 10)  # Top 10 đặc trưng
+# 
+# # ----- TRÍCH XUẤT FEATURES THEO CÂY -----
+# dt <- xgb.model.dt.tree(model = model_bin) 
+# # Cột quan trọng: Tree (0-based), Feature, Split, Yes, No, Missing
+# # Loại bỏ nút lá và lấy feature duy nhất trên mỗi Tree
+# tree_features <- dt %>%
+#   filter(Feature != "Leaf") %>%
+#   group_by(Tree) %>%
+#   summarise(features = paste(unique(Feature), collapse = ", "),
+#             n_features = n_distinct(Feature), .groups = "drop") %>%
+#   mutate(round = Tree + 1) %>%               # binary: mỗi tree = 1 round
+#   arrange(round)
+# 
+# 
+# tree_imp <- dt %>%
+#   filter(Feature != "Leaf") %>%
+#   group_by(Tree, Feature) %>%
+#   summarise(
+#     gain  = sum(Quality),
+#     cover = sum(Cover),
+#     .groups = "drop"
+#   )
+
+# head(data_bien_taisan,1000)
+# 
+# write.xlsx(head(data_bien_taisan,10000),"D:\\Data Minh\\TSCORE\\BSCORE\\xxx.xlsx",colNames = TRUE)
+
+
+  
+  
+  
+
