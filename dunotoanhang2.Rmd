@@ -1,0 +1,1637 @@
+---
+title: "Báo cáo"
+date: "`r Sys.Date()`"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: row
+    vertical_layout: fill
+    theme: cerulean
+    navbar:
+        
+      - title: "About"
+        href: "HIHI"
+        icon: "fa-info-circle"
+        align: "right"
+    # css: styles.css
+# runtime: shiny
+params:
+  ngay: "2026-03-05"
+
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(flextable)
+library(rpart)
+library(dplyr)
+library(sqldf)
+library(rio)
+library(janitor)
+library(gtsummary)
+library(cards)
+library(stringr)
+library(lubridate)
+library(forcats)
+library(tidyverse)
+library(hms)
+library(linelist)
+library(stringi)
+library(data.table)
+library(rmarkdown)
+library(pastecs)
+library(readxl)
+library(openxlsx)
+library(creditmodel)
+library(datasets)
+library(openxlsx)
+library(tidyr)
+library(reshape2)
+library(Information)
+library(scorecard)
+library(htmltools)
+library(bslib)
+library(pacman)
+library(scales)
+
+options(scipen = 999)
+
+pacman::p_load(flextable,tidyverse,rio,officer)
+
+# data_toanhang <- read_excel("D:\\Data Minh\\TSCORE\\baocaotanggiam.xlsx", sheet = "toanhang")
+# data_oto <-  read_excel("D:\\Data Minh\\TSCORE\\baocaotanggiam.xlsx", sheet = "oto")
+# 
+# data_toanhang <- clean_names(data_toanhang)
+# data_oto <- clean_names(data_oto)
+
+##tháng này
+data_sktd <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_TINDUNG_20260305.txt",sep ="$")
+data_thauchi <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_THAUCHI_20260305.txt",sep ="$")
+data_thauchi_quahan <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_THAUCHI_QUAHAN_20260305.txt",sep ="$")
+data_card <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_CARD_VISA_20260305.txt",sep ="$")
+data_cus_20260131 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\CUSTOMER_20260310.txt",sep ="$") %>% clean_names()
+data_machinhanh <-  read_excel("D:\\Data Minh\\TSCORE\\CODE_CHINHANH.xlsx") %>% clean_names()
+data_tsbd <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAO_KE_TSDB_20260305.txt",sep ="$") %>% clean_names()
+data_cib <-  read_excel("D:\\Data Minh\\BAOCAO\\SAOKE\\LIST_CIB.xlsx") %>% clean_names()
+
+##tháng trước
+data_sktd_t1 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_TINDUNG_20260228.txt",sep ="$")
+data_thauchi_t1 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_THAUCHI_20260228.txt",sep ="$")
+data_thauchi_quahan_t1 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_THAUCHI_QUAHAN_20260228.txt",sep ="$")
+data_card_t1 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_CARD_VISA_20260228.txt",sep ="$")
+data_cus_t1 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\CUSTOMER_20260310.txt",sep ="$") %>% clean_names()
+data_machinhanh <-  read_excel("D:\\Data Minh\\TSCORE\\CODE_CHINHANH.xlsx") %>% clean_names()
+data_tsbd_t1 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAO_KE_TSDB_20260228.txt",sep ="$") %>% clean_names()
+
+## tổng hợp sao kê tháng này
+
+#vay
+
+x_duno <- data_sktd %>% select(TXN_DATE,LD_ID,CUSTOMER,AMOUNT_LCY,SONGAY_QHAN_CAONHAT,CO_CODE,KHOI,VN_FULL_NAME) %>% 
+  distinct() %>% #filter(CUSTOMER %in% cus_list) %>%
+  mutate(duno = as.numeric(AMOUNT_LCY)
+         ,customer = as.character(CUSTOMER)
+         ,max_dpd = as.numeric(SONGAY_QHAN_CAONHAT)
+         ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+  ) %>% clean_names() %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name) %>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(max_dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+
+# vv1 <- x_duno %>% filter(customer=="1000062189") 
+# vv2 <-data_sktd %>% filter(CUSTOMER=="1000062189")
+
+#thẻ
+x_card <- data_card %>% select(TXN_DATE,CIF,BRANCH_CODE_T24,CONTRACT_NAME,DU_NO_STATEMENT,OVER_DAYS) %>%
+  distinct() %>% mutate(duno = case_when(DU_NO_STATEMENT == "null" ~ "0"
+                                                               ,TRUE ~ DU_NO_STATEMENT)
+                                              ,duno = as.numeric(duno)*-1
+                                              ,dpd=case_when(OVER_DAYS == "null" ~"0",TRUE ~ OVER_DAYS)
+                                              ,dpd=as.numeric(dpd)
+                                              ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+                                              ,customer=as.character(CIF)
+                                              ,khoi = "INDIV"
+                                             ,vn_full_name = CONTRACT_NAME
+                                             ,co_code =BRANCH_CODE_T24
+                                              ) %>% 
+  filter(duno >0) %>% clean_names() %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name) %>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+# thấu chi quá hạn
+x_thauchi_quahan <- data_thauchi_quahan %>% 
+  select(TXN_DATE,LD_ID,CUSTOMER,AMOUNT_LCY,SONGAY_QHAN_CAONHAT,CO_CODE,KHOI,VN_FULL_NAME) %>%
+  distinct() %>% 
+  mutate(AMOUNT_LCY = case_when(AMOUNT_LCY == "null" ~ "0",TRUE ~AMOUNT_LCY)
+         ,duno = as.numeric(AMOUNT_LCY)
+         ,customer = as.character(CUSTOMER)
+         ,max_dpd = as.numeric(SONGAY_QHAN_CAONHAT)
+         ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+  ) %>% clean_names() %>% mutate(customer = as.character(customer)) %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name) %>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(max_dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+
+# thấu chi
+x_thauchi <- data_thauchi %>% 
+  select(TXN_DATE,CUSTOMER,WORKING_BALANCE,CO_CODE_CUSTOMER,KHOI,SHORT_TITLE) %>%
+  distinct() %>% mutate(WORKING_BALANCE = case_when(WORKING_BALANCE == "null" ~ "0"
+                                                    ,TRUE ~ WORKING_BALANCE)
+                        ,duno = as.numeric(WORKING_BALANCE)*-1
+                        ,dpd=0
+                        ,customer = as.character(CUSTOMER)
+                        ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+                        ,co_code=CO_CODE_CUSTOMER
+                        ,khoi = KHOI
+                        ,vn_full_name=SHORT_TITLE) %>% 
+  filter(duno >0) %>% clean_names() %>% mutate(customer = as.character(customer)) %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name)%>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+# tổng hợp
+
+x_chovay <- rbind(x_duno,x_card,x_thauchi_quahan,x_thauchi) %>%
+               group_by(report_date,customer,co_code,khoi,vn_full_name) %>%
+               summarise(sodu = sum(sumduno)
+                         ,max_dpd = max(max_dpd)) %>%
+          filter(co_code !="null") %>%
+          left_join(data_machinhanh %>% select(ma_br_t24,chi_nhanh=ten_cn_quan_ly)
+                    ,by = c("co_code"="ma_br_t24")) %>%
+          group_by(report_date,customer,chi_nhanh,khoi,vn_full_name) %>%
+          summarise(sodu = sum(sodu)
+                         ,max_dpd = max(max_dpd))
+# ghép với sao kê tài sản
+
+x_chovay_tagts <- x_chovay %>% left_join(data_tsbd %>% 
+                                     filter(collateral_type %in% c("201","202","203","204","205","206","207","208")) %>%
+                                     mutate(customer_id =as.character(customer_id)) %>%
+                                     select(customer_id,customer_name) %>% 
+                                     distinct()
+                                     ,by = c("customer"="customer_id")
+                                        ) %>% 
+                                mutate(tag_oto = case_when(!is.na(customer_name) ~ "Y",TRUE ~ "N")) %>%
+                                select(everything(),-customer_name)
+
+# lấy khối CIB
+x_chovay_tagts <- x_chovay_tagts %>% left_join(data_cib %>% mutate(recid=as.character(recid)) %>% 
+                                                 select(recid,doanh_thu_t24) %>% distinct()
+                                               ,by = c("customer"="recid")
+                                               ) %>% mutate(dvql = case_when(!is.na(doanh_thu_t24)~"KHDN",TRUE ~ "KHBL")) %>%
+                                    select(everything(),-doanh_thu_t24)
+                  
+# x <- x_chovay_tagts %>% filter(dvql == "KHDN")
+## tổng hợp sao kê tháng trước
+
+#vay
+
+x_duno_t1 <- data_sktd_t1 %>% select(TXN_DATE,LD_ID,CUSTOMER,AMOUNT_LCY,SONGAY_QHAN_CAONHAT,CO_CODE,KHOI,VN_FULL_NAME) %>% 
+  distinct() %>% #filter(CUSTOMER %in% cus_list) %>%
+  mutate(duno = as.numeric(AMOUNT_LCY)
+         ,customer = as.character(CUSTOMER)
+         ,max_dpd = as.numeric(SONGAY_QHAN_CAONHAT)
+         ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+  ) %>% clean_names() %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name) %>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(max_dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+
+#thẻ
+x_card_t1 <- data_card_t1 %>% select(TXN_DATE,CIF,BRANCH_CODE_T24,CONTRACT_NAME,DU_NO_STATEMENT,OVER_DAYS) %>%
+  distinct() %>% mutate(duno = case_when(DU_NO_STATEMENT == "null" ~ "0"
+                                                               ,TRUE ~ DU_NO_STATEMENT)
+                                              ,duno = as.numeric(duno)*-1
+                                              ,dpd=case_when(OVER_DAYS == "null" ~"0",TRUE ~ OVER_DAYS)
+                                              ,dpd=as.numeric(dpd)
+                                              ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+                                              ,customer=as.character(CIF)
+                                              ,khoi = "INDIV"
+                                             ,vn_full_name = CONTRACT_NAME
+                                             ,co_code =BRANCH_CODE_T24
+                                              ) %>% 
+  filter(duno >0) %>% clean_names() %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name) %>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+
+
+# thấu chi quá hạn
+x_thauchi_quahan_t1 <- data_thauchi_quahan_t1 %>% 
+  select(TXN_DATE,LD_ID,CUSTOMER,AMOUNT_LCY,SONGAY_QHAN_CAONHAT,CO_CODE,KHOI,VN_FULL_NAME) %>%
+  distinct() %>% 
+  mutate(AMOUNT_LCY = case_when(AMOUNT_LCY == "null" ~ "0",TRUE ~AMOUNT_LCY)
+         ,duno = as.numeric(AMOUNT_LCY)
+         ,customer = as.character(CUSTOMER)
+         ,max_dpd = as.numeric(SONGAY_QHAN_CAONHAT)
+         ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+  ) %>% clean_names() %>% mutate(customer = as.character(customer)) %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name) %>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(max_dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+
+# thấu chi
+x_thauchi_t1 <- data_thauchi_t1 %>% select(TXN_DATE,CUSTOMER,WORKING_BALANCE,CO_CODE_CUSTOMER,KHOI,SHORT_TITLE) %>%
+  distinct() %>% mutate(WORKING_BALANCE = case_when(WORKING_BALANCE == "null" ~ "0"
+                                                    ,TRUE ~ WORKING_BALANCE)
+                        ,duno = as.numeric(WORKING_BALANCE)*-1
+                        ,dpd=0
+                        ,customer = as.character(CUSTOMER)
+                        ,report_date = format(as.Date(TXN_DATE,format = "%m/%d/%Y"),"%Y%m%d")
+                        ,co_code=CO_CODE_CUSTOMER
+                        ,khoi = KHOI
+                        ,vn_full_name=SHORT_TITLE
+  ) %>% 
+  filter(duno >0) %>% clean_names() %>% mutate(customer = as.character(customer)) %>%
+  group_by(customer,report_date,co_code,khoi,vn_full_name)%>%
+  summarise(sumduno= sum(duno),
+            max_dpd=max(dpd)) %>%
+  select(report_date,co_code,khoi,vn_full_name,customer,max_dpd,sumduno) %>% distinct()
+
+# tổng hợp
+
+x_chovay_t1 <- rbind(x_duno_t1,x_card_t1,x_thauchi_quahan_t1,x_thauchi_t1) %>%
+               group_by(report_date,customer,co_code,khoi,vn_full_name) %>%
+               summarise(sodu = sum(sumduno)
+                         ,max_dpd = max(max_dpd)) %>%
+          filter(co_code !="null") %>%
+          left_join(data_machinhanh %>% select(ma_br_t24,chi_nhanh=ten_cn_quan_ly)
+                    ,by = c("co_code"="ma_br_t24")) %>%
+          group_by(report_date,customer,chi_nhanh,khoi,vn_full_name) %>%
+          summarise(sodu = sum(sodu)
+                         ,max_dpd = max(max_dpd))
+# ghép với sao kê tài sản
+
+x_chovay_tagts_t1 <- x_chovay_t1 %>% left_join(data_tsbd_t1 %>% 
+                                     filter(collateral_type %in% c("201","202","203","204","205","206","207","208")) %>%
+                                      mutate(customer_id =as.character(customer_id)) %>%
+                                     select(customer_id,customer_name) %>% 
+                                       distinct()
+                                   ,by = c("customer"="customer_id")
+                                   ) %>% mutate(tag_oto = case_when(!is.na(customer_name) ~ "Y",TRUE ~ "N")) %>%
+                                select(everything(),-customer_name)
+
+# lấy khối CIB
+x_chovay_tagts_t1 <- x_chovay_tagts_t1 %>% left_join(data_cib %>% mutate(recid=as.character(recid)) %>% 
+                                                 select(recid,doanh_thu_t24) %>% distinct()
+                                               ,by = c("customer"="recid")
+                                               ) %>% mutate(dvql = case_when(!is.na(doanh_thu_t24)~"KHDN",TRUE ~ "KHBL")) %>%
+                                    select(everything(),-doanh_thu_t24)
+
+## group by tổng nợ toàn hàng theo khối
+
+data_toanhang_groupby <- x_chovay_tagts %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                     group_by(dvql,group_dpd) %>%
+                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2)) %>%
+                     left_join(x_chovay_tagts_t1 %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                                     group_by(dvql,group_dpd) %>%
+                                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2))
+                               ,by = c("dvql"="dvql","group_dpd"="group_dpd")
+                               ,suffix = c("","_left")
+                               ) %>% select(everything(),-ends_with("_left"),sum_duno_left) %>% 
+                            mutate(chenhlech = sum_duno-sum_duno_left)
+
+# names(data_toanhang_groupby2)
+                           
+data_toanhang_groupby2 <- data_toanhang_groupby %>% select(dvql,group_dpd,sum_duno) %>%
+                          pivot_wider(names_from = group_dpd,values_from = c(sum_duno)) %>%
+                          left_join(data_toanhang_groupby %>% select(dvql,group_dpd,chenhlech) %>% 
+                                      pivot_wider(names_from = group_dpd,values_from = c(chenhlech))
+                                    ,by = c("dvql"="dvql")
+                                    ,suffix = c("_duno","_chenh")
+                                    ) %>% select(c(1,7,13
+                                                   ,4,10,2,8,5,11,3,9,6,12
+                                                   )
+                                                 ) %>% clean_names() %>%
+                          mutate(across(.cols = c(1), .fns = as.character)
+                                 ,across(.cols = c(2:12), .fns = as.numeric)
+                                 ) %>% mutate(no_gr1_duno = as.numeric(no_gr1_duno),no_gr1_chenh= as.numeric(no_gr1_chenh)) %>%
+                         adorn_totals(where = "row",fill = "Toàn hàng",name = "Toàn hàng") %>%
+                         mutate(across(.cols = c(2:13),~ tidyr::replace_na(.x, 0))
+                                )
+
+
+## group by tổng nợ toàn hàng theo CHI NHÁNH
+data_chinhanh_groupby <- x_chovay_tagts %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                     group_by(chi_nhanh,group_dpd) %>%
+                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2)) %>%
+                     left_join(x_chovay_tagts_t1 %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                                     group_by(chi_nhanh,group_dpd) %>%
+                                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2))
+                               ,by = c("chi_nhanh"="chi_nhanh","group_dpd"="group_dpd")
+                               ,suffix = c("","_left")
+                               ) %>% select(everything(),-ends_with("_left"),sum_duno_left) %>% 
+                            mutate(chenhlech = sum_duno-sum_duno_left)
+
+data_chinhanh_groupby2 <- data_chinhanh_groupby %>% select(chi_nhanh,group_dpd,sum_duno) %>%
+                          pivot_wider(names_from = group_dpd,values_from = c(sum_duno)) %>%
+                          left_join(data_chinhanh_groupby %>% select(chi_nhanh,group_dpd,chenhlech) %>% 
+                                      pivot_wider(names_from = group_dpd,values_from = c(chenhlech))
+                                    ,by = c("chi_nhanh"="chi_nhanh")
+                                    ,suffix = c("_duno","_chenh")
+                                    ) %>% select(c(1,7,13
+                                                   ,4,10,2,8,5,11,3,9,6,12
+                                                   )
+                                                 ) %>% clean_names() %>%
+                          mutate(across(.cols = c(2:12),~ tidyr::replace_na(.x, 0))) %>%
+                          mutate(across(.cols = c(1), .fns = as.character)
+                                 ,across(.cols = c(2:12), .fns = as.numeric)
+                                 ) %>% mutate(no_gr1_duno = as.numeric(no_gr1_duno),no_gr1_chenh= as.numeric(no_gr1_chenh)) %>%
+                         adorn_totals(where = "row",fill = "Toàn hàng",name = "Toàn hàng") %>%
+                         mutate(across(.cols = c(2:13),~ tidyr::replace_na(.x, 0))
+                                )
+
+
+## group by tổng nợ toàn hàng theo khối+CHI NHÁNH
+data_chinhanhkhoi_groupby <- x_chovay_tagts %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                     group_by(dvql,chi_nhanh,group_dpd) %>%
+                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2)) %>%
+                     left_join(x_chovay_tagts_t1 %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                                     group_by(dvql,chi_nhanh,group_dpd) %>%
+                                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2))
+                               ,by = c("dvql"="dvql"
+                                       ,"chi_nhanh"="chi_nhanh"
+                                       ,"group_dpd"="group_dpd")
+                               ,suffix = c("","_left")
+                               ) %>% select(everything(),-ends_with("_left"),sum_duno_left) %>% 
+                            mutate(chenhlech = sum_duno-sum_duno_left)
+
+# names(data_chinhanhkhoi_groupby2)
+data_chinhanhkhoi_groupby2 <- data_chinhanhkhoi_groupby %>% select(dvql,chi_nhanh,group_dpd,sum_duno) %>%
+                          pivot_wider(names_from = group_dpd,values_from = c(sum_duno)) %>%
+                          left_join(data_chinhanhkhoi_groupby %>% select(dvql,chi_nhanh,group_dpd,chenhlech) %>% 
+                                      pivot_wider(names_from = group_dpd,values_from = c(chenhlech))
+                                    ,by = c("chi_nhanh"="chi_nhanh","dvql"="dvql")
+                                    ,suffix = c("_duno","_chenh")
+                                    ) %>% select(c(1,2,8,14
+                                                   ,5,11,3,9,6,12,4,10,7,13
+                                                   )
+                                                 ) %>% clean_names() %>%
+                          mutate(across(.cols = c(3:12),~ tidyr::replace_na(.x, 0))) %>%
+                          mutate(across(.cols = c(1,2), .fns = as.character)
+                                 ,across(.cols = c(3:12), .fns = as.numeric)
+                                 ) %>% select(everything()) %>% mutate(no_gr1_duno = as.numeric(no_gr1_duno)
+                                                                       ,no_gr1_chenh= as.numeric(no_gr1_chenh)) %>%
+                         # adorn_totals(where = "row",fill = "Tổng",name = "Tổng") %>%
+                         mutate(across(.cols = c(1:12),~ tidyr::replace_na(.x, 0))
+                                )
+
+## group by tổng nợ toàn hàng theo khách hàng+ khối+CHI NHÁNH
+data_chinhanhkhoikhachhang_groupby <- x_chovay_tagts %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                     group_by(customer,vn_full_name,dvql,chi_nhanh,group_dpd) %>%
+                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2)) %>%
+                     left_join(x_chovay_tagts_t1 %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                                     group_by(customer,vn_full_name,dvql,chi_nhanh,group_dpd) %>%
+                                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2))
+                               ,by = c("dvql"="dvql"
+                                       ,"chi_nhanh"="chi_nhanh"
+                                       ,"customer"="customer"
+                                       ,"vn_full_name"="vn_full_name"
+                                       #,"group_dpd"="group_dpd"
+                                       )
+                               ,suffix = c("","_left")
+                               ) %>% select(everything(),-ends_with("_left"),sum_duno_left,group_dpd_left) %>% 
+                            mutate(chenhlech = sum_duno-sum_duno_left)
+
+# x<-x_chovay_tagts %>% filter(customer=="1000040241")
+# names(data_chinhanhkhoikhachhang_groupby2)
+data_chinhanhkhoikhachhang_groupby2 <- data_chinhanhkhoikhachhang_groupby %>% 
+  select(customer,vn_full_name,dvql,chi_nhanh,group_dpd,sum_duno) %>%
+                          pivot_wider(names_from = group_dpd,values_from = c(sum_duno)) %>%
+                          left_join(data_chinhanhkhoikhachhang_groupby %>% 
+                                      select(customer,vn_full_name,dvql,chi_nhanh,group_dpd,chenhlech) %>% 
+                                      pivot_wider(names_from = group_dpd,values_from = c(chenhlech))
+                                    ,by = c("chi_nhanh"="chi_nhanh","dvql"="dvql"
+                                            ,"customer"="customer"
+                                            ,"vn_full_name"="vn_full_name")
+                                    ,suffix = c("_duno","_chenh")
+                                    ) %>% select(c(1,2,3,4,5,11
+                                                   ,9,15,10,16,7
+                                                   ,13,8,14,6,12
+                                                   )
+                                                 ) %>% clean_names() %>%
+                                       select(everything()) %>% mutate(no_gr1_duno = as.numeric(no_gr1_duno)
+                                                                       ,no_gr1_chenh= as.numeric(no_gr1_chenh)
+                                                                       ,no_gr1_duno = replace_na(no_gr1_duno,0)
+                                                                       ,no_gr1_chenh= replace_na(no_gr1_chenh,0)
+                                                                       ,dpd1_9_duno = as.numeric(dpd1_9_duno)
+                                                                       ,dpd1_9_chenh= as.numeric(dpd1_9_chenh)
+                                                                       ,dpd1_9_duno = replace_na(dpd1_9_duno,0)
+                                                                       ,dpd1_9_chenh= replace_na(dpd1_9_chenh,0)
+                                                                       
+                                                                                                                                                                                                                   ,dpd10_90_duno = as.numeric(dpd10_90_duno)
+                                                                       ,dpd10_90_chenh= as.numeric(dpd10_90_chenh)
+                                                                       ,dpd10_90_duno = replace_na(dpd10_90_duno,0)
+                                                                       ,dpd10_90_chenh= replace_na(dpd10_90_chenh,0)
+                                                                       
+                                                                       ,dpd91_180_duno = as.numeric(dpd91_180_duno)
+                                                                       ,dpd91_180_chenh= as.numeric(dpd91_180_chenh)
+                                                                       ,dpd91_180_duno = replace_na(dpd91_180_duno,0)
+                                                                       ,dpd91_180_chenh= replace_na(dpd91_180_chenh,0)
+                                                                       
+                                                                       ,dpd181_360_duno = as.numeric(dpd181_360_duno)
+                                                                       ,dpd181_360_chenh= as.numeric(dpd181_360_chenh)
+                                                                       ,dpd181_360_duno = replace_na(dpd181_360_duno,0)
+                                                                       ,dpd181_360_chenh= replace_na(dpd181_360_chenh,0)
+                                                                       
+                                                                       ,dpd_360_duno = as.numeric(dpd_360_duno)
+                                                                       ,dpd_360_chenh= as.numeric(dpd_360_chenh)
+                                                                       ,dpd_360_duno = replace_na(dpd_360_duno,0)
+                                                                       ,dpd_360_chenh= replace_na(dpd_360_chenh,0)
+                                                                       ) #%>% adorn_totals(where = "row",fill = "Tổng",name = "Tổng")
+
+
+## group by tổng nợ Ô TÔ theo CHI NHÁNH
+data_oto_groupby <- x_chovay_tagts %>% filter(tag_oto == "Y") %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                     group_by(chi_nhanh,group_dpd) %>%
+                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2)) %>%
+                     left_join(x_chovay_tagts_t1 %>% mutate(group_dpd = case_when(max_dpd ==0 ~ "Nợ GR1"
+                                                                          ,max_dpd >0 & max_dpd<10 ~"DPD1_9"
+                                                                          ,max_dpd >9 & max_dpd<91 ~"DPD10_90"
+                                                                          ,max_dpd >90 & max_dpd<181 ~"DPD91_180"
+                                                                          ,max_dpd >180 & max_dpd<361 ~"DPD181_360"
+                                                                          ,max_dpd >360~"DPD>360"
+                                                                          )
+                                                  ) %>%
+                                     group_by(chi_nhanh,group_dpd) %>%
+                                     summarise(sum_duno = round(sum(as.numeric(sodu))/1000000000,2))
+                               ,by = c("chi_nhanh"="chi_nhanh","group_dpd"="group_dpd")
+                               ,suffix = c("","_left")
+                               ) %>% select(everything(),-ends_with("_left"),sum_duno_left) %>% 
+                            mutate(chenhlech = sum_duno-sum_duno_left)
+
+# names(data_oto_groupby2)
+data_oto_groupby2 <- data_oto_groupby %>% select(chi_nhanh,group_dpd,sum_duno) %>%
+                          pivot_wider(names_from = group_dpd,values_from = c(sum_duno)) %>%
+                          left_join(data_oto_groupby %>% select(chi_nhanh,group_dpd,chenhlech) %>% 
+                                      pivot_wider(names_from = group_dpd,values_from = c(chenhlech))
+                                    ,by = c("chi_nhanh"="chi_nhanh")
+                                    ,suffix = c("_duno","_chenh")
+                                    ) %>% select(c(1,7,13,4,10,2,8,5,11,3,9,6,12
+                                                   )
+                                                 ) %>% clean_names() %>%
+                          mutate(across(.cols = c(1:12),~ tidyr::replace_na(.x, 0))) %>%
+                          mutate(across(.cols = c(1), .fns = as.character)
+                                 ,across(.cols = c(1:12), .fns = as.numeric)
+                                 ) %>% mutate(no_gr1_duno = as.numeric(no_gr1_duno),no_gr1_chenh= as.numeric(no_gr1_chenh)) %>%
+                         adorn_totals(where = "row",fill = "Tổng",name = "Tổng")
+
+## group by top chi nhánh tăng nhóm nợ theo KHBL
+data_chinhanhkhoitang_groupby <- data_chinhanhkhoi_groupby2 %>% filter(dvql == "KHBL") %>%
+        select(chi_nhanh,ends_with("_chenh"))
+
+## group by top khách hàng tăng nhóm nợ theo KHBL
+data_chinhanhkhoikhachangtang_groupby <- data_chinhanhkhoikhachhang_groupby2 %>% 
+  filter(dvql == "KHBL") %>% mutate(customer_name=vn_full_name) %>%
+        select(customer,customer_name,chi_nhanh,ends_with("_chenh"))
+
+## group by top chi nhánh tăng nhóm nợ theo KHDN
+data_chinhanhkhoitang_groupby2 <- data_chinhanhkhoi_groupby2 %>% filter(dvql == "KHDN") %>% 
+        select(chi_nhanh,ends_with("_chenh"))
+
+## group by top khách hàng tăng nhóm nợ theo KHDN
+data_chinhanhkhoikhachangtang_groupby3 <- data_chinhanhkhoikhachhang_groupby2 %>% filter(dvql == "KHDN") %>% 
+  mutate(customer_name=vn_full_name) %>%
+        select(customer,customer_name,chi_nhanh,ends_with("_chenh"))
+
+```
+# **Toàn hàng**
+
+## column
+
+###
+
+```{r}
+valuea <- data_toanhang_groupby2[3,] %>% mutate(sumall = format(round(no_gr1_duno+dpd1_9_duno
+                                                +dpd10_90_duno+dpd91_180_duno+dpd181_360_duno
+                                                +dpd_360_duno,0),big.mark = ",")) %>%
+          select(sumall) 
+
+valueBox(
+  value = valuea[1,1],
+  caption = "<span style='color:white;'>Tổng dư nợ (tỷ đồng)</span>",
+  # icon = "fa-folder-open"
+  ,color = "#1E90FF"
+)
+
+
+```
+
+###
+
+```{r}
+valueb <- data_toanhang_groupby2[3,] %>% mutate(sumall = no_gr1_duno+dpd1_9_duno
+                                                +dpd10_90_duno+dpd91_180_duno+dpd181_360_duno
+                                                +dpd_360_duno
+                                                ,sumnpl = dpd91_180_duno+dpd181_360_duno+dpd_360_duno
+                                                ,npl = round((sumnpl/sumall)*100,2)
+                                                ) %>% select(npl)
+
+
+# arrow <- if (valueb[1,1] > 0) "↑" else if (valueb[1,1] < 0) "↓" else "→"
+
+
+box_color <- if (valueb[1,1] <= 1.0) {
+  "#00FF00"
+} else if (valueb[1,1] > 1.0 & valueb[1,1] <=2.5) {
+  "#FFB90F"
+} else {
+  "#FF4500"
+}
+
+# delta_html <- HTML(sprintf("<span style='color:%s; font-weight:700;'>%s %s</span>",
+#                            box_color, arrow, sprintf("%+.1f%%",valueb[1,1])))
+
+
+valueBox(
+  value = paste0(valueb[1,1],"%"),
+  caption = "Tỷ lệ NPL hiện tại",
+  # icon = "fa-folder-open"
+  ,color = box_color
+)
+
+
+```
+
+###
+
+```{r}
+y <- 0.03
+
+arrow2 <- if (y > 0) "↑" else if (y < 0) "↓" else "→"
+
+
+box_color3 <- if (y > 0) {
+  "#00FF00"
+} else if (y == 0) {
+  "#FFB90F"
+} else {
+  "#FF4500"
+}
+
+delta_html2 <- HTML(sprintf("<span style='color:%s; font-weight:700;'>%s %s</span>",
+                          box_color3, arrow2, sprintf("%+.1f%%",y*100)))
+
+valueBox(
+  value = delta_html2,
+  caption = "% Tăng/giảm dư nợ so với tháng trước"
+  # ,icon = "fa-tasks"
+    ,color = box_color3
+)
+
+
+```
+
+###
+
+```{r}
+x <- as.numeric(0.015)
+
+arrow <- if (x > 0) "↑" else if (x < 0) "↓" else "→"
+
+box_color2 <- if (x < 0) {
+  "#00FF00"
+} else if (x == 0) {
+  "#FFB90F"
+} else {
+  "#FF4500"
+}
+
+delta_html3 <- HTML(sprintf("<span style='color:%s; font-weight:700;'>%s %s</span>",
+                          box_color2, arrow, sprintf("%+.1f%%",x*100)))
+
+valueBox(
+  value = delta_html3,
+  caption = "% Tăng giảm NPL so với tháng trước"
+  # ,icon = "fa-gear"
+  ,color = box_color2
+)
+
+
+```
+
+## <span style="color: #191970;">**Tổng Book nợ đến ngày**</span> 
+
+```{r}
+data_toanhang_groupby3 <- flextable(data_toanhang_groupby2) %>% 
+  set_table_properties(layout = "autofit", width = 1)
+
+# names(data_toanhang_groupby2)
+data_toanhang_groupby4 <- data_toanhang_groupby3 %>%
+  
+  add_header_row(
+    top = TRUE,                # New header goes on top of existing header row
+    values = c("Phân khúc",     # Header values for each column below
+               "DPD=0",
+               "",
+               "DPD1_9",         # This will be the top-level header for this and two next columns
+               "",             # Leave blank, as it will be merged with "Died"
+               "DPD10_90",
+               "",
+               "DPD91_180",
+               "",
+               "DPD181_360",
+               "",
+               "DPD>360",
+               ""
+               )) %>% set_header_labels(dvql = ""
+                                        ,no_gr1_duno = "Dưnợ"
+                                        ,no_gr1_chenh = "+/-"
+                                        ,dpd1_9_duno = "Dưnợ"
+                                        ,dpd1_9_chenh = "+/-"
+                                        ,dpd10_90_duno = "Dưnợ"
+                                        ,dpd10_90_chenh = "+/-"
+                                        ,dpd91_180_duno = "Dưnợ"
+                                        ,dpd91_180_chenh = "+/-"
+                                        ,dpd181_360_duno = "Dưnợ"
+                                        ,dpd181_360_chenh = "+/-"
+                                        ,dpd_360_duno = "Dưnợ"
+                                        ,dpd_360_chenh = "+/-" 
+                                        ) %>% 
+  merge_at(i = 1, j = 2:3, part = "header") %>% 
+  merge_at(i = 1, j = 4:5, part = "header") %>%
+  merge_at(i = 1, j = 6:7, part = "header") %>% 
+  merge_at(i = 1, j = 8:9, part = "header") %>% 
+  merge_at(i = 1, j = 10:11, part = "header") %>%
+  merge_at(i = 1, j = 12:13, part = "header") %>%
+  merge_at(i = 1:2, j = 1, part = "header")
+
+
+border_style = officer::fp_border(color="black", width=1)
+
+data_toanhang_groupby4 <- data_toanhang_groupby4 %>% 
+
+  # Remove all existing borders
+  border_remove() %>%  
+  
+  # add horizontal lines via a pre-determined theme setting
+  theme_booktabs() %>% 
+  
+  # add vertical lines to separate Recovered and Died sections
+  hline(part = "header", i = 1, border = border_style) %>%
+  vline(part = "all", j = 1, border = border_style) %>%   # at column 1 
+  vline(part = "all", j = 3, border = border_style) %>%     # at column 3
+  vline(part = "all", j = 5, border = border_style) %>%       # at column 3
+  vline(part = "all", j = 7, border = border_style) %>%      # at column 3
+  vline(part = "all", j = 9, border = border_style) %>%      # at column 3
+  vline(part = "all", j = 11, border = border_style)       # at column 3
+
+data_toanhang_groupby4 <- data_toanhang_groupby4 %>% 
+   flextable::align(align = "center",j = c(1:13), part = "all") 
+
+data_toanhang_groupby4 <-  data_toanhang_groupby4 %>%  
+  fontsize(i = 1, size = 12, part = "header") %>%   # adjust font size of header
+  bold(i = 1, bold = TRUE, part = "header") %>%     # adjust bold face of header
+  bold(i = 3, bold = TRUE, part = "body")           # adjust bold face of total row (row 7 of body)
+
+data_toanhang_groupby4 <- data_toanhang_groupby4 %>% 
+    bg(part = "body", bg = "gray95")  
+
+
+data_toanhang_groupby4 %>%
+  bg(j = c(3,5,7,9,11,13)
+     ,bg = function(x) ifelse(x > 0, "#FF7256", "#00FF00")
+     , part = "body") %>% bg(bg = "#4F94CD",part = "header") %>% 
+  color(color = "white", part = "header") %>%
+  add_footer_lines(values = "Ghi chú: Đơn vị là tỷ đồng; +/- so với tháng trước") %>%
+  italic(part = "footer") %>%
+  align(part = "footer", align = "right") %>%
+  fontsize(part="footer", size=8)
+
+```
+# **Theo vùng miền/chi nhánh**
+
+### **Book nợ theo Vùng miền/chi nhánh**
+
+```{r}
+data_chinhanh_groupby3 <- flextable(data_chinhanh_groupby2) %>% 
+  set_table_properties(layout = "autofit", width = 1
+                       ,opts_html = list(scroll = list())) %>% 
+  fontsize(size = 9, part = "all")
+
+# names(data_toanhang_groupby2)
+data_chinhanh_groupby4 <- data_chinhanh_groupby3 %>%
+  
+  add_header_row(
+    top = TRUE,                # New header goes on top of existing header row
+    values = c("Chi nhánh",     # Header values for each column below
+               "DPD=0",
+               "",
+               "DPD1_9",         # This will be the top-level header for this and two next columns
+               "",             # Leave blank, as it will be merged with "Died"
+               "DPD10_90",
+               "",
+               "DPD91_180",
+               "",
+               "DPD181_360",
+               "",
+               "DPD>360",
+               ""
+               )) %>% set_header_labels(chi_nhanh = ""
+                                        ,no_gr1_duno = "Dưnợ"
+                                        ,no_gr1_chenh = "+/-"
+                                        ,dpd1_9_duno = "Dưnợ"
+                                        ,dpd1_9_chenh = "+/-"
+                                        ,dpd10_90_duno = "Dưnợ"
+                                        ,dpd10_90_chenh = "+/-"
+                                        ,dpd91_180_duno = "Dưnợ"
+                                        ,dpd91_180_chenh = "+/-"
+                                        ,dpd181_360_duno = "Dưnợ"
+                                        ,dpd181_360_chenh = "+/-"
+                                        ,dpd_360_duno = "Dưnợ"
+                                        ,dpd_360_chenh = "+/-"
+                                        ) %>% 
+  merge_at(i = 1, j = 2:3, part = "header") %>% 
+  merge_at(i = 1, j = 4:5, part = "header") %>%
+  merge_at(i = 1, j = 6:7, part = "header") %>% 
+  merge_at(i = 1, j = 8:9, part = "header") %>% 
+  merge_at(i = 1, j = 10:11, part = "header") %>%
+  merge_at(i = 1, j = 12:13, part = "header") %>%
+  merge_at(i = 1:2, j = 1, part = "header")
+
+
+border_style = officer::fp_border(color="black", width=1)
+
+data_chinhanh_groupby4 <- data_chinhanh_groupby4 %>% 
+
+  # Remove all existing borders
+  border_remove() %>%  
+  
+  # add horizontal lines via a pre-determined theme setting
+  theme_booktabs() %>% 
+  
+  # add vertical lines to separate Recovered and Died sections
+  hline(part = "header", i = 1, border = border_style) %>%
+  vline(part = "all", j = 1, border = border_style) %>%   # at column 1 
+  vline(part = "all", j = 3, border = border_style) %>%     # at column 3
+  vline(part = "all", j = 5, border = border_style) %>%       # at column 3
+  vline(part = "all", j = 7, border = border_style) %>%      # at column 3
+    vline(part = "all", j = 9, border = border_style) %>%      # at column 3
+  vline(part = "all", j = 11, border = border_style)       # at column 3
+
+data_chinhanh_groupby4 <- data_chinhanh_groupby4 %>% 
+   flextable::align(align = "center",j = c(1:13), part = "header") %>% 
+   flextable::align(align = "right",j = c(2:13), part = "body") %>% 
+   flextable::align(align = "left",j = c(1), part = "body")
+
+data_chinhanh_groupby4 <-  data_chinhanh_groupby4 %>%  
+  fontsize(i = 1, size = 12, part = "header") %>%   # adjust font size of header
+  bold(i = 1, bold = TRUE, part = "header") %>%
+  bold(i = ~ chi_nhanh == "Toàn hàng", bold = TRUE, part = "body")
+
+
+
+data_chinhanh_groupby4 <- data_chinhanh_groupby4 %>% 
+    bg(part = "body", bg = "gray95")  
+
+
+data_chinhanh_groupby4 %>%
+  bg(j = c(3,5,7,9,11,13)
+     ,bg = function(x) ifelse(x > 0, "#FF7256", "#00FF00")
+     , part = "body") %>% bg(bg = "#4F94CD",part = "header") %>%
+  color(color = "white", part = "header") %>% 
+  set_table_properties(layout = "autofit", width = 1
+                       ,opts_html = list(scroll = list(height = "500px")
+                       ,extra_css = "thead th {position: sticky
+                       ;top: 5
+                       ;background-color: white
+                       ;z-index: 1000;
+                       }")) %>%
+  fontsize(size = 8, part = "all") %>%
+  add_header_lines(values = "Ghi chú: Đơn vị là tỷ đồng; +/- so với tháng trước") %>%
+  italic(part = "header") %>%
+  align(part = "header", align = "right") %>%
+  fontsize(part="header", size=8)
+
+```
+
+### **Book tài sản đảm bảo là ô tô**
+
+```{r}
+data_oto_groupby3 <- flextable(data_oto_groupby2) %>% 
+  set_table_properties(layout = "autofit", width = 1
+                       ,opts_html = list(scroll = list())) %>% 
+  fontsize(size = 9, part = "all")
+
+# names(data_toanhang_groupby2)
+data_oto_groupby4 <- data_oto_groupby3 %>%
+  
+  add_header_row(
+    top = TRUE,                # New header goes on top of existing header row
+    values = c("chi_nhanh",     # Header values for each column below
+               "DPD=0",
+               "",
+               "DPD1_9",         # This will be the top-level header for this and two next columns
+               "",             # Leave blank, as it will be merged with "Died"
+               "DPD10_90",
+               "",
+               "DPD91_180",
+               "",
+               "DPD181_360",
+               "",
+               "DPD>360",
+               ""
+               )) %>% set_header_labels(chi_nhanh = ""
+                                        ,no_gr1_duno = "Dưnợ"
+                                        ,no_gr1_chenh = "+/-"
+                                        ,dpd1_9_duno = "Dưnợ"
+                                        ,dpd1_9_chenh = "+/-"
+                                        ,dpd10_90_duno = "Dưnợ"
+                                        ,dpd10_90_chenh = "+/-"
+                                        ,dpd91_180_duno = "Dưnợ"
+                                        ,dpd91_180_chenh = "+/-"
+                                        ,dpd181_360_duno = "Dưnợ"
+                                        ,dpd181_360_chenh = "+/-"
+                                        ,dpd_360_duno = "Dưnợ"
+                                        ,dpd_360_chenh = "+/-"
+                                        ) %>% 
+  merge_at(i = 1, j = 2:3, part = "header") %>% 
+  merge_at(i = 1, j = 4:5, part = "header") %>%
+  merge_at(i = 1, j = 6:7, part = "header") %>% 
+  merge_at(i = 1, j = 8:9, part = "header") %>% 
+  merge_at(i = 1, j = 10:11, part = "header") %>%
+  merge_at(i = 1, j = 12:13, part = "header") %>%
+  merge_at(i = 1:2, j = 1, part = "header")
+
+
+border_style = officer::fp_border(color="black", width=1)
+
+data_oto_groupby4 <- data_oto_groupby4 %>% 
+
+  # Remove all existing borders
+  border_remove() %>%  
+  
+  # add horizontal lines via a pre-determined theme setting
+  theme_booktabs() %>% 
+  
+  # add vertical lines to separate Recovered and Died sections
+  hline(part = "header", i = 1, border = border_style) %>%
+  vline(part = "all", j = 1, border = border_style) %>%   # at column 1 
+  vline(part = "all", j = 3, border = border_style) %>%     # at column 3
+  vline(part = "all", j = 5, border = border_style) %>%       # at column 3
+  vline(part = "all", j = 7, border = border_style) %>%      # at column 3
+    vline(part = "all", j = 9, border = border_style) %>%      # at column 3
+  vline(part = "all", j = 11, border = border_style)       # at column 3
+
+data_oto_groupby4 <- data_oto_groupby4 %>% 
+   flextable::align(align = "center",j = c(1:13), part = "header") %>% 
+   flextable::align(align = "right",j = c(2:13), part = "body") %>% 
+   flextable::align(align = "left",j = c(1), part = "body")
+
+data_oto_groupby4 <- data_oto_groupby4 %>%  
+  fontsize(i = 1, size = 12, part = "header") %>%   # adjust font size of header
+  bold(i = 1, bold = TRUE, part = "header") %>%
+  bold(i = ~ chi_nhanh == "Tổng", bold = TRUE, part = "body")
+
+
+
+data_oto_groupby4 <- data_oto_groupby4 %>% 
+    bg(part = "body", bg = "gray95")  
+
+
+data_oto_groupby4 %>%
+  bg(j = c(3,5,7,9,11,13)
+     ,bg = function(x) ifelse(x > 0, "#FF7256", "#00FF00")
+     , part = "body") %>% bg(bg = "#4F94CD",part = "header") %>%
+  color(color = "white", part = "header") %>%
+  set_table_properties(layout = "autofit", width = 1
+                       ,opts_html = list(scroll = list(height = "500px")
+                       ,extra_css = "thead th {position: sticky
+                       ;top: 5
+                       ;background-color: white
+                       ;z-index: 1000;
+                       }")) %>%
+  fontsize(size = 8, part = "all") %>%
+  add_header_lines(values = "Ghi chú: Đơn vị là tỷ đồng; +/- so với tháng trước") %>%
+  italic(part = "header") %>%
+  align(part = "header", align = "right") %>%
+  fontsize(part="header", size=8)
+```
+
+# **Theo Phân khúc**
+
+## column
+
+### **Khối Bán lẻ**
+
+```{r}
+# names(data_chinhanhkhoi_groupby2)
+data_chinhanhkhoi_groupby2_1 <- data_chinhanhkhoi_groupby2 %>%
+  filter(dvql %in% c("KHBL")) %>% 
+  adorn_totals(where = "row",fill = "Tổng",name = "Tổng") %>% select(2:14)
+
+data_chinhanhkhoi_groupby3 <- flextable(data_chinhanhkhoi_groupby2_1
+                                        ) %>%
+  set_table_properties(layout = "autofit", width = 1) %>% 
+  fontsize(size = 9, part = "all")
+
+# names(data_toanhang_groupby2)
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby3 %>%
+  
+  add_header_row(
+    top = TRUE,                # New header goes on top of existing header row
+    values = c("Chi nhánh",     # Header values for each column below
+               "DPD=0",
+               "",
+               "DPD1_9",         # This will be the top-level header for this and two next columns
+               "",             # Leave blank, as it will be merged with "Died"
+               "DPD10_90",
+               "",
+               "DPD91_180",
+               "",
+               "DPD181_360",
+               "",
+               "DPD>360",
+               ""
+               )) %>% set_header_labels(chi_nhanh = ""
+                                        ,no_gr1_duno = "Dưnợ"
+                                        ,no_gr1_chenh = "+/-"
+                                        ,dpd1_9_duno = "Dưnợ"
+                                        ,dpd1_9_chenh = "+/-"
+                                        ,dpd10_90_duno = "Dưnợ"
+                                        ,dpd10_90_chenh = "+/-"
+                                        ,dpd91_180_duno = "Dưnợ"
+                                        ,dpd91_180_chenh = "+/-"
+                                        ,dpd181_360_duno = "Dưnợ"
+                                        ,dpd181_360_chenh = "+/-"
+                                        ,dpd_360_duno = "Dưnợ"
+                                        ,dpd_360_chenh = "+/-"
+                                        ) %>% 
+  merge_at(i = 1, j = 2:3, part = "header") %>% 
+  merge_at(i = 1, j = 4:5, part = "header") %>%
+  merge_at(i = 1, j = 6:7, part = "header") %>% 
+  merge_at(i = 1, j = 8:9, part = "header") %>% 
+  merge_at(i = 1, j = 10:11, part = "header") %>%
+  merge_at(i = 1, j = 12:13, part = "header") %>%
+  merge_at(i = 1:2, j = 1, part = "header")
+
+
+border_style = officer::fp_border(color="black", width=1)
+
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby4 %>% 
+
+  # Remove all existing borders
+  border_remove() %>%  
+  
+  # add horizontal lines via a pre-determined theme setting
+  theme_booktabs() %>% 
+  
+  # add vertical lines to separate Recovered and Died sections
+  hline(part = "header", i = 1, border = border_style) %>%
+  vline(part = "all", j = 1, border = border_style) %>%   # at column 1 
+  vline(part = "all", j = 3, border = border_style) %>%     # at column 3
+  vline(part = "all", j = 5, border = border_style) %>%       # at column 3
+  vline(part = "all", j = 7, border = border_style) %>%      # at column 3
+    vline(part = "all", j = 9, border = border_style) %>%      # at column 3
+  vline(part = "all", j = 11, border = border_style)       # at column 3
+
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby4 %>% 
+   flextable::align(align = "center",j = c(1:13), part = "header") %>% 
+   flextable::align(align = "right",j = c(2:13), part = "body") %>% 
+   flextable::align(align = "left",j = c(1), part = "body")
+
+data_chinhanhkhoi_groupby4 <-  data_chinhanhkhoi_groupby4 %>%  
+  fontsize(i = 1, size = 12, part = "header") %>%   # adjust font size of header
+  bold(i = 1, bold = TRUE, part = "header") %>%
+  bold(i = ~ chi_nhanh == "Tổng", bold = TRUE, part = "body")
+
+
+
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby4 %>% 
+    bg(part = "body", bg = "gray95")  
+
+
+data_chinhanhkhoi_groupby4 %>%
+  bg(j = c(3,5,7,9,11,13)
+     ,bg = function(x) ifelse(x > 0, "#FF7256", "#00FF00")
+     , part = "body") %>% bg(bg = "#4F94CD",part = "header") %>%
+  color(color = "white", part = "header") %>%
+  set_table_properties(layout = "autofit", width = 1
+                       ,opts_html = list(scroll = list(height = "500px")
+                       ,extra_css = "thead th {position: sticky
+                       ;top: 5
+                       ;background-color: white
+                       ;z-index: 1000;
+                       }")) %>%
+  fontsize(size = 8, part = "all") %>%
+  add_header_lines(values = "Ghi chú: Đơn vị là tỷ đồng; +/- so với tháng trước") %>%
+  italic(part = "header") %>%
+  align(part = "header", align = "right") %>%
+  fontsize(part="header", size=8)
+```
+
+### **Khối Bán buôn**
+
+```{r}
+# names(data_chinhanhkhoi_groupby2)
+data_chinhanhkhoi_groupby2_2 <- data_chinhanhkhoi_groupby2 %>%
+  filter(dvql %in% c("KHDN")) %>% 
+  adorn_totals(where = "row",fill = "Tổng",name = "Tổng") %>% select(2:14)
+
+data_chinhanhkhoi_groupby3 <- flextable(data_chinhanhkhoi_groupby2_2
+                                        ) %>% set_table_properties(layout = "autofit", width = 1) %>% 
+  fontsize(size = 9, part = "all")
+
+# names(data_toanhang_groupby2)
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby3 %>%
+  
+  add_header_row(
+    top = TRUE,                # New header goes on top of existing header row
+    values = c("Chi nhánh",     # Header values for each column below
+               "DPD=0",
+               "",
+               "DPD1_9",         # This will be the top-level header for this and two next columns
+               "",             # Leave blank, as it will be merged with "Died"
+               "DPD10_90",
+               "",
+               "DPD91_180",
+               "",
+               "DPD181_360",
+               "",
+               "DPD>360",
+               ""
+               )) %>% set_header_labels(chi_nhanh = ""
+                                        ,no_gr1_duno = "Dưnợ"
+                                        ,no_gr1_chenh = "+/-"
+                                        ,dpd1_9_duno = "Dưnợ"
+                                        ,dpd1_9_chenh = "+/-"
+                                        ,dpd10_90_duno = "Dưnợ"
+                                        ,dpd10_90_chenh = "+/-"
+                                        ,dpd91_180_duno = "Dưnợ"
+                                        ,dpd91_180_chenh = "+/-"
+                                        ,dpd181_360_duno = "Dưnợ"
+                                        ,dpd181_360_chenh = "+/-"
+                                        ,dpd_360_duno = "Dưnợ"
+                                        ,dpd_360_chenh = "+/-"
+                                        ) %>% 
+  merge_at(i = 1, j = 2:3, part = "header") %>% 
+  merge_at(i = 1, j = 4:5, part = "header") %>%
+  merge_at(i = 1, j = 6:7, part = "header") %>% 
+  merge_at(i = 1, j = 8:9, part = "header") %>% 
+  merge_at(i = 1, j = 10:11, part = "header") %>%
+  merge_at(i = 1, j = 12:13, part = "header") %>%
+  merge_at(i = 1:2, j = 1, part = "header")
+
+
+border_style = officer::fp_border(color="black", width=1)
+
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby4 %>% 
+
+  # Remove all existing borders
+  border_remove() %>%  
+  
+  # add horizontal lines via a pre-determined theme setting
+  theme_booktabs() %>% 
+  
+  # add vertical lines to separate Recovered and Died sections
+  hline(part = "header", i = 1, border = border_style) %>%
+  vline(part = "all", j = 1, border = border_style) %>%   # at column 1 
+  vline(part = "all", j = 3, border = border_style) %>%     # at column 3
+  vline(part = "all", j = 5, border = border_style) %>%       # at column 3
+  vline(part = "all", j = 7, border = border_style) %>%      # at column 3
+    vline(part = "all", j = 9, border = border_style) %>%      # at column 3
+  vline(part = "all", j = 11, border = border_style)       # at column 3
+
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby4 %>% 
+   flextable::align(align = "center",j = c(1:13), part = "header") %>% 
+   flextable::align(align = "right",j = c(2:13), part = "body") %>% 
+   flextable::align(align = "left",j = c(1), part = "body")
+
+data_chinhanhkhoi_groupby4 <-  data_chinhanhkhoi_groupby4 %>%  
+  fontsize(i = 1, size = 12, part = "header") %>%   # adjust font size of header
+  bold(i = 1, bold = TRUE, part = "header") %>%
+  bold(i = ~ chi_nhanh == "Tổng", bold = TRUE, part = "body")
+
+
+
+data_chinhanhkhoi_groupby4 <- data_chinhanhkhoi_groupby4 %>% 
+    bg(part = "body", bg = "gray95")  
+
+
+data_chinhanhkhoi_groupby4 %>%
+  bg(j = c(3,5,7,9,11,13)
+     ,bg = function(x) ifelse(x > 0, "#FF7256","#00FF00")
+     , part = "body") %>% bg(bg = "#4F94CD",part = "header") %>%
+  color(color = "white", part = "header") %>%
+  set_table_properties(layout = "autofit", width = 1
+                       ,opts_html = list(scroll = list(height = "500px")
+                       ,extra_css = "thead th {position: sticky
+                       ;top: 5
+                       ;background-color: white
+                       ;z-index: 1000;
+                       }")) %>%
+  fontsize(size = 8, part = "all") %>%
+  add_header_lines(values = "Ghi chú: Đơn vị là tỷ đồng; +/- so với tháng trước") %>%
+  italic(part = "header") %>%
+  align(part = "header", align = "right") %>%
+  fontsize(part="header", size=8)
+
+
+```
+# **Danh sách nhóm nợ chi tiết KHBL**
+
+## Danh sách theo chi nhánh
+
+### **DPD 1-9 ngày**
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby %>% ungroup() %>% 
+                select(chi_nhanh,dpd1_9_chenh) %>% mutate(`Chi nhánh` = chi_nhanh
+                                                          ,`Tăng/giảm` = round(dpd1_9_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering  = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+
+```
+
+### **DPD 10-90 ngày**
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby %>% ungroup() %>% mutate(`Chi nhánh` = chi_nhanh
+                                                       ,`Tăng/giảm` = round(dpd10_90_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+```
+
+### <span style="color: #FF3030;">**DPD 91-180 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby %>% ungroup() %>% 
+                select(chi_nhanh,dpd91_180_chenh) %>% mutate(`Chi nhánh` = chi_nhanh,`Tăng/giảm` = round(dpd91_180_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+
+```
+
+### <span style="color: #FF3030;">**DPD 181-360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby %>% ungroup() %>% 
+                select(chi_nhanh,dpd181_360_chenh) %>% mutate(`Chi nhánh` = chi_nhanh,`Tăng/giảm` = round(dpd181_360_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+)
+```
+
+### <span style="color: #FF3030;">**DPD >360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby %>% ungroup() %>% select(chi_nhanh,dpd_360_chenh) %>% 
+                mutate(`Chi nhánh` = chi_nhanh,`Tăng/giảm` = round(dpd_360_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>% 
+                arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+)
+
+```
+## Danh sách theo khách hàng {.tabset}
+
+### **DPD 1-9 ngày**
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby %>% ungroup() %>% 
+                select(customer,customer_name,chi_nhanh,dpd1_9_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd1_9_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+          ,class = "compact")
+
+
+```
+
+### **DPD 10-90 ngày**
+
+```{r}
+  
+DT::datatable(data_chinhanhkhoikhachangtang_groupby %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd10_90_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd10_90_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+```
+
+### <span style="color: #FF3030;">**DPD 91-180 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd91_180_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd91_180_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+
+```
+
+### <span style="color: #FF3030;">**DPD 181-360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby %>% ungroup() %>% 
+                select(customer,customer_name,chi_nhanh,dpd181_360_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd181_360_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+
+```
+
+### <span style="color: #FF3030;">**DPD >360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd_360_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd_360_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+```
+
+# **Danh sách nhóm nợ chi tiết KHDN**
+
+## Danh sách theo chi nhánh
+
+### **DPD 1-9 ngày**
+
+```{r}
+# data_chinhanhkhoitang_groupby2
+
+DT::datatable(data_chinhanhkhoitang_groupby2 %>% ungroup() %>% select(chi_nhanh,dpd1_9_chenh) %>% 
+                mutate(`Chi nhánh` = chi_nhanh
+                       ,`Tăng/giảm` = round(dpd1_9_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>% 
+                arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering  = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+
+
+```
+
+### **DPD 10-90 ngày**
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby2 %>% ungroup() %>% mutate(`Chi nhánh` = chi_nhanh
+                                                       ,`Tăng/giảm` = round(dpd10_90_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+```
+
+### <span style="color: #FF3030;">**DPD 91-180 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby2 %>% ungroup() %>% select(chi_nhanh,dpd91_180_chenh) %>% 
+                mutate(`Chi nhánh` = chi_nhanh
+                       ,`Tăng/giảm` = round(dpd91_180_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+
+```
+
+### <span style="color: #FF3030;">**DPD 181-360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby2 %>% ungroup() %>% 
+                select(chi_nhanh,dpd181_360_chenh) %>% mutate(`Chi nhánh` = chi_nhanh
+                                                                                          ,`Tăng/giảm` = round(dpd181_360_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+)
+```
+
+### <span style="color: #FF3030;">**DPD >360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoitang_groupby2 %>% ungroup() %>% select(chi_nhanh,dpd_360_chenh) %>% 
+                mutate(`Chi nhánh` = chi_nhanh,`Tăng/giảm` = round(dpd_360_chenh,2)) %>%
+                select(`Chi nhánh`,`Tăng/giảm`) %>% 
+                arrange(desc(`Tăng/giảm`))
+  ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+  )
+
+```
+## Danh sách theo khách hàng {.tabset}
+
+### **DPD 1-9 ngày**
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby3 %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd1_9_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd1_9_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             ,class = "compact")
+
+
+```
+
+### **DPD 10-90 ngày**
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby3 %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd10_90_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd10_90_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+```
+
+### <span style="color: #FF3030;">**DPD 91-180 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby3 %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd91_180_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd91_180_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+
+```
+
+### <span style="color: #FF3030;">**DPD 181-360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby3 %>% ungroup() %>% 
+                select(customer,customer_name,chi_nhanh,dpd181_360_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd181_360_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+
+```
+
+### <span style="color: #FF3030;">**DPD >360 ngày**</span>
+
+```{r}
+
+DT::datatable(data_chinhanhkhoikhachangtang_groupby3 %>% ungroup() %>%
+                select(customer,customer_name,chi_nhanh,dpd_360_chenh) %>%
+                mutate(`Mã khách hàng`= customer
+                       ,`Tên khách hàng` = customer_name
+                       ,`Tên chi nhánh` =chi_nhanh
+                       ,`Tăng/giảm` = round(dpd_360_chenh,2)
+                       ) %>% select(`Mã khách hàng`,`Tên khách hàng`,`Tên chi nhánh`,`Tăng/giảm`) %>%
+  arrange(desc(`Tăng/giảm`)) %>% head(5)
+          ,rownames = FALSE
+                , options = list(pageLength = 50,bPaginate = FALSE
+                                 , searching =FALSE
+                                 ,ordering = TRUE
+                                 ,paging =FALSE
+                                 ,info =FALSE
+                                 )
+             )
+```
