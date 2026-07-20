@@ -1,0 +1,801 @@
+library(ggplot2)
+# library(flextable)
+library(rpart)
+library(dplyr)
+library(sqldf)
+# library(partykit)
+library(RODBC)
+# library(Hmisc)
+library(pastecs)
+# library(haven)
+# library(smbinning)
+# library(monobin)
+library(readxl)
+library(openxlsx)
+library(odbc)
+# library(DBI)
+library(creditmodel)
+library(datasets)
+library(caret)
+library(openxlsx)
+library(tidyr)
+# library(readr)
+library(reshape2)
+library(Information)
+library(scorecard)
+# library(SciViews)
+# library(mltools)
+library(rio)
+library(janitor)
+library(gtsummary)
+library(cards)
+library(stringr)
+library(lubridate)
+library(forcats)
+library(tidyverse)
+library(hms)
+library(linelist)
+library(stringi)
+library(data.table)
+library(rmarkdown)
+# install.packages("mltools")
+library(mltools)
+library(Hmisc)
+
+# R.version.string
+# remove.packages("checkmate")
+# remove.packages("mlr3")
+# install.packages("checkmate", type = "binary")
+# library(checkmate)
+# Sys.which("make")
+# Sys.which("gcc")
+## LẤY DATA từ sql server
+# rm(data_model)
+con <- dbConnect(odbc::odbc(),
+                 Driver   = "SQL Server",
+                 Server   = "HNI-QLRR-628\\SQLEXPRESS", 
+                 Database = "RRTD",
+                 Trusted_Connection = "Yes")
+
+
+data_bien_taisan_khdn_ews <- dbGetQuery(con, "SELECT * FROM bien_tsbd_khdn_ews")
+data_bien_tindung_khdn_ews <- dbGetQuery(con, "SELECT * FROM bien_tindung_khdn_ews") 
+# data_bien_thunhap_ews <- dbGetQuery(con, "SELECT * FROM bien_thunhap_ews") 
+# data_bien_thongtin_ews <- dbGetQuery(con, "SELECT * FROM bien_thongtin_ews")
+
+data_model_khdn_ews <- data_bien_tindung_khdn_ews %>% left_join(data_bien_taisan_khdn_ews
+                                                      , by =c("snapshot_date"="snapshot_date"
+                                                              ,"customer_id"="customer_id")
+                                                      ,suffix = c("",".left")) %>% clean_names() %>%
+  mutate(across(where(is.numeric),~ replace_na(.x, 0))
+  )
+
+# write.table(data_model,file = "D:\\Data Minh\\TSCORE\\BSCORE\\data_bscore.txt",sep = "|",row.names = FALSE,col.names = TRUE,quote = FALSE)
+# gán lại good/bad
+data_model_khdn_ews$tag_gb[data_model_khdn_ews$tag_gb=="GOOD"] <- 0
+data_model_khdn_ews$tag_gb[data_model_khdn_ews$tag_gb=="BAD"] <- 1
+
+##chia tập dữ liệu THEO OOT
+# dev_data <- sqldf("select *
+#                    from data_model_ews 
+#                    where snapshot_date<='20250831' and snapshot_date>='20250101'
+#                    ")
+# 
+# val_data <- sqldf("select  *
+#                  from data_model_ews where snapshot_date >='20250930'
+#                   ")
+
+#bỏ snapshot_Date
+# dev_data <- dev_data %>% select(everything(),-snapshot_date,-customer_id)
+# val_data <- val_data %>% select(everything(),-snapshot_date,-customer_id)
+# names(val_data)
+
+# # chia tập dữ liệu auto theo RANDOM
+train_test_khdn = train_test_split(dat = data_model_khdn_ews, prop = 0.7, split_type = "Random",
+                              occur_time = NULL, start_date = NULL, cut_date = NULL,
+                              save_data = FALSE, note = FALSE)
+# rm(train_test)
+dev_data_khdn = train_test_khdn$train
+val_data_khdn = train_test_khdn$test
+
+dev_data_khdn <- dev_data_khdn %>% select(everything(),-snapshot_date,-customer_id)
+val_data_khdn <- val_data_khdn %>% select(everything(),-snapshot_date,-customer_id)
+# hàm tính IV
+
+# rm(bins)
+# class(val_data$snapshot_date)
+
+# val_data$tag_gb <- as.factor(val_data$tag_gb)
+
+bins_khdn <- woebin(dev_data_khdn, y = "tag_gb"
+               ,bin_num_limit=10, positive = "bad|0"
+               , method = "tree"
+               ,count_distr_limit=0.01
+               ,stop_limit=0.01
+)  # hoặc "chimerge"
+
+
+# Xem chi tiết 1 biến
+bins$age
+bins$gioitinh
+
+# in ra excel
+hs <- createStyle(border ="TopBottomLeftRight",
+                  textDecoration = "BOLD", fontColour = "#FFFFFF", fontSize = 12,
+                  fontName = "Cambria Narrow", fgFill = "#4F80BD",wrapText=FALSE)
+
+openxlsx::write.xlsx(bins_khdn, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx",rowNames=FALSE,
+                     colNames = TRUE, overwrite = TRUE,
+                     borders = "all",gridLines =TRUE
+                     ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
+                     ,headerStyle = hs,keepNA=FALSE)
+
+
+
+##lấy các biến có iv>=10%
+
+# Tinh PSI
+psi_1 <- get_psi_all(
+  dat=dev_data[,c(4:74)],
+  x_list = NULL,
+  target = NULL,
+  dat_test = val_data[,c(4:74)],
+  breaks_list = NULL,
+  occur_time = NULL,
+  start_date = NULL,
+  cut_date = NULL,
+  #oot_pct = 0.7,
+  pos_flag = NULL,
+  parallel = FALSE,
+  ex_cols = NULL,
+  as_table = FALSE,
+  g = 10,
+  bins_no = TRUE,
+  note = FALSE
+)
+
+## gộp IV và PSI
+sheet_names <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx")  # extract sheet names
+
+combined <- sheet_names %>%
+  purrr::set_names() %>%
+  map(.f = ~import("D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx", which = .x)) %>%
+  bind_rows(.id = "Biến") %>%
+  mutate(bad_rate = neg/count) %>%
+  group_by(variable) %>%
+  mutate(max_dis =max(count_distr)) %>%
+  ungroup() %>%
+  filter(total_iv >= 0.02 & max_dis<0.9) #%>% # lấy các biến có iv>=10% và mức độ tập trung data <90%
+#left_join(psi_1 %>% data.frame(),by = c("variable"="Feature"))
+
+openxlsx::write.xlsx(combined, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var4_khdn.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
+                     colNames = TRUE, overwrite = TRUE,
+                     borders = "all",gridLines =TRUE
+                     ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
+                     ,headerStyle = hs,keepNA=TRUE)
+
+########################## bin lại từng biến #########################
+dev_data_khdn$fmax_dpd_l6m<- cut(dev_data_khdn$max_dpd_l6m, #OK
+                            breaks = c("-Inf",3,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+dev_data_khdn$favg_usage_limit_l6m<- cut(dev_data_khdn$avg_usage_limit_l6m, #OK
+                                         breaks = c("-Inf",0.88,0.98,"Inf"),
+                                         include.lowest =TRUE,
+                                         right = FALSE)
+
+dev_data_khdn$febitda_laivay<- cut(dev_data_khdn$ebitda_laivay, #OK
+                                   breaks = c("-Inf",3,8,"Inf"),
+                                   include.lowest =TRUE,
+                                   right = FALSE)
+
+dev_data_khdn$flnst_tts<- cut(dev_data_khdn$lnst_tts, #OK
+                                             breaks = c("-Inf",0.005,0.1,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+dev_data_khdn$flnst_vcsh<- cut(dev_data_khdn$lnst_vcsh, #OK
+                              breaks = c("-Inf",0,0.24,"Inf"),
+                              include.lowest =TRUE,
+                              right = FALSE)
+
+dev_data_khdn$ftongno_vcsh<- cut(dev_data_khdn$tongno_vcsh, #OK
+                               breaks = c("-Inf",0.2,4.8,"Inf"),
+                               include.lowest =TRUE,
+                               right = FALSE)
+
+dev_data_khdn$favg_ltv_bds_l3m<- cut(dev_data_khdn$avg_ltv_bds_l3m, #OK
+                                 breaks = c("-Inf",0.4,2.2,"Inf"),
+                                 include.lowest =TRUE,
+                                 right = FALSE)
+
+dev_data_khdn$favg_ltv_bds_l6m<- cut(dev_data_khdn$avg_ltv_bds_l6m, #OK
+                                     breaks = c("-Inf",0.4,2.2,"Inf"),
+                                     include.lowest =TRUE,
+                                     right = FALSE)
+
+dev_data_khdn$fthang_nhapkho_gannhat<- cut(dev_data_khdn$thang_nhapkho_gannhat, #OK
+                                     breaks = c("-Inf",8,15,"Inf"),
+                                     include.lowest =TRUE,
+                                     right = FALSE)
+
+######################### tính WOE sau khi bin lại ###################
+##woe numeric
+
+# names(dev_data_khdn)
+bins_woe_num = woebin(dev_data_khdn[,c(6,67:75)], y = "tag_gb",
+                      ,positive="bad|0" #### bad|0 là tag_gb có bad=1
+                      ,check_cate_num=TRUE
+                      ,no_cores = 1
+                      ,count_distr_limit =0.01)
+
+list_var_final <- data.frame()
+
+for (i in bins_woe_num) {
+  x <- data.frame(i)
+  list_var_final <- rbind(x,list_var_final)
+}
+
+list_var_final2 <- list_var_final %>%
+  select(everything(),-breaks,-is_special_values,-bin_iv,-posprob,-pos) %>% 
+  mutate(bad_rate = neg/count)
+
+write.xlsx(list_var_final2,"D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\list_var_final2.xlsx",colNames = TRUE)
+##woe NOT numeric
+# names(dev_data)
+# glimpse(val_data$AVG_UNIT_PRICE_MORTGAGE)
+
+# breaks_list = list(
+#   GROUP_PRODUCT = c("AT LEAST CL OR MG","AT LEAST PBL","OTHER")
+#   # ,LAZY_PAYER_L12M=c("Y","N")
+#   )
+# 
+# 
+# bins_woe_cate = woebin(dev_data, y = "tag_gb",breaks_list=breaks_list,
+#                 ,positive="bad|0" #### bad|0 là tag_gb có bad=1
+#                 ,check_cate_num=TRUE, no_cores = 1)
+
+## APPLY WOE vao OBS
+dt_woe_1 = woebin_ply(dev_data_khdn[,c(1,2,6,67:75)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data goc
+
+dt_woe_1$tag_gb <-as.numeric(dt_woe_1$tag_gb)
+
+# dt_woe2 = woebin_ply(val_data[,c(4,c(5:51))], bins=bins_woe_num, to ='bin')## apply cac bin vao data goc
+# dt_woe_1$tag_gb <-as.factor(dt_woe_1$tag_gb)
+# names(dt_woe_1)
+# rm(dt_woe)
+
+########################## CHẠY MODEL #########################
+
+##chay correl
+library(caret)
+# version
+
+dt_corr <- dt_woe_1 %>% select(everything(),-snapshot_date,-customer_id)
+
+res <- cor(dt_corr)
+
+to_drop <- findCorrelation(res, cutoff = 0.75, names = TRUE, exact = TRUE)# Chọn biến nên loại với ngưỡng |r| > 0.85
+
+to_keep <- setdiff(names(dt_corr), to_drop)# Giữ lại phần còn lại
+
+dt_woe_keep <- dt_woe_1 %>% select(all_of(to_keep),tag_gb)
+dt_woe_keep$tag_gb <-as.factor(dt_woe_keep$tag_gb)
+## chạy grid
+library(mlr3)
+library(mlr3fselect)
+library(mlr3learners)
+library(mlr3measures)
+# Tạo task phân loại nhị phân (ví dụ: Titanic dataset)
+# task <- tsk("titanic")
+# Tạo task với biến mục tiêu dạng 0/1
+task <- TaskClassif$new(id = "credit", backend = dt_woe_keep, target = "tag_gb")
+# Logistic Regression learner
+learner <- lrn("classif.log_reg")
+learner$predict_type <- "prob"
+# Sequential Backward Selection
+instance <- fselect(
+  fselector = fs("sequential", strategy = "sbs"), # backward selection
+  task = task,
+  learner = learner,
+  resampling = rsmp("cv", folds = 5),             # cross-validation
+  measure = msr("classif.auc"),                    # classification error
+  term_evals = 20                               # số vòng lặp
+  # ,min_features = 5                                # số feature tối thiểu
+)
+
+# Kết quả tập feature tối ưu
+instance$result_y
+
+instance$result
+
+instance$result_feature_set
+
+# Xem toàn bộ quá trình chọn feature
+as.data.table(instance$archive)
+
+# # Huấn luyện logistic regression với tập feature tối ưu
+# task$select(instance$result_feature_set)
+# learner$train(task)
+# learner$model$coefficients ## hệ số đang đảo sang dương (thực chất là âm)
+
+m1 = glm(tag_gb ~ ., family = binomial(), data = dt_woe_keep %>% select(all_of(instance$result_feature_set),tag_gb))
+summary(m1)
+
+## loại các biến pvalue >0.05 và coeff >0
+coef_table <- as.data.frame(summary(m1)$coefficients) %>% clean_names() %>%
+  filter(estimate >0 | pr_z >0.05) %>% rownames_to_column()
+
+##chay lai model lan 2
+
+vars_r2 <- coef_table[coef_table$rowname != "(Intercept)","rowname"] # danh sách loại
+
+m2 <- update(m1, as.formula(paste(". ~ . -", paste(vars_r2, collapse = " - "))))
+
+summary(m2)
+
+# # Tính xác suất (PD) cho từng quan sát
+# prediction <- learner$predict(task)
+# # Lấy xác suất default
+# pd <- prediction$prob[, "1"]
+# 
+# # gắn lại data ban đầu
+# data_with_pred <- cbind(
+#   task$data(),
+#   pd = prediction$prob[, "1"]
+# )
+
+##VIF 
+vif_var <- vif(m2)
+## QUY DOI RA DIEM (da calibrate)
+
+
+
+#### apply cho tập val
+val_data_khdn$fmax_dpd_l6m<- cut(val_data_khdn$max_dpd_l6m, #OK
+                                 breaks = c("-Inf",3,"Inf"),
+                                 include.lowest =TRUE,
+                                 right = FALSE)
+
+val_data_khdn$favg_usage_limit_l6m<- cut(val_data_khdn$avg_usage_limit_l6m, #OK
+                                         breaks = c("-Inf",0.88,0.98,"Inf"),
+                                         include.lowest =TRUE,
+                                         right = FALSE)
+
+val_data_khdn$febitda_laivay<- cut(val_data_khdn$ebitda_laivay, #OK
+                                   breaks = c("-Inf",3,8,"Inf"),
+                                   include.lowest =TRUE,
+                                   right = FALSE)
+
+val_data_khdn$flnst_tts<- cut(val_data_khdn$lnst_tts, #OK
+                              breaks = c("-Inf",0.005,0.1,"Inf"),
+                              include.lowest =TRUE,
+                              right = FALSE)
+
+val_data_khdn$flnst_vcsh<- cut(val_data_khdn$lnst_vcsh, #OK
+                               breaks = c("-Inf",0,0.24,"Inf"),
+                               include.lowest =TRUE,
+                               right = FALSE)
+
+val_data_khdn$ftongno_vcsh<- cut(val_data_khdn$tongno_vcsh, #OK
+                                 breaks = c("-Inf",0.2,4.8,"Inf"),
+                                 include.lowest =TRUE,
+                                 right = FALSE)
+
+val_data_khdn$favg_ltv_bds_l3m<- cut(val_data_khdn$avg_ltv_bds_l3m, #OK
+                                     breaks = c("-Inf",0.4,2.2,"Inf"),
+                                     include.lowest =TRUE,
+                                     right = FALSE)
+
+val_data_khdn$favg_ltv_bds_l6m<- cut(val_data_khdn$avg_ltv_bds_l6m, #OK
+                                     breaks = c("-Inf",0.4,2.2,"Inf"),
+                                     include.lowest =TRUE,
+                                     right = FALSE)
+
+val_data_khdn$fthang_nhapkho_gannhat<- cut(val_data_khdn$thang_nhapkho_gannhat, #OK
+                                           breaks = c("-Inf",8,15,"Inf"),
+                                           include.lowest =TRUE,
+                                           right = FALSE)
+
+
+# names(val_data_khdn)
+dt_woe_val = woebin_ply(val_data_khdn[,c(1,2,6,67:75)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data val
+
+dt_woe_keep_val <- dt_woe_val %>% select(all_of(to_keep),tag_gb)
+dt_woe_keep_val$tag_gb <-as.factor(dt_woe_keep_val$tag_gb)
+
+# task_val <- TaskClassif$new(id = "credit", backend = dt_woe_keep_val, target = "tag_gb")
+# 
+# task_val$select(instance$result_feature_set)
+# # learner$train(task_val)
+# 
+# prediction_val <- learner$predict(task_val)
+# # Lấy xác suất default
+# pd_val <- prediction_val$prob[, "1"]
+# 
+# # gắn lại data ban đầu
+# data_with_pred_val <- cbind(
+#   task_val$data(),
+#   pd = prediction_val$prob[, "1"]
+# )
+# names(dt_woe_1)
+# names(pd_val_data)
+# rm(pd_val_data)
+###### TINH PD CHO TAP VAL và DEV
+###dev
+pdo <- 50
+base_score <- 600
+factor <- pdo/log(2)
+odd <- 20
+offset <- base_score - factor*log(odd)
+
+pd_dev_data2 <- data_with_pred %>%
+  mutate(
+     score_cali = round(offset + factor*log((1-pd)/pd),0)
+    ,bin = ntile(score_cali, 10)
+  ) %>% data.frame()
+
+pd_dev_data <- dt_woe_1 %>% select(snapshot_date,customer_id,tag_gb,all_of(attr(terms(m1), "term.labels"))) %>%
+  mutate(
+    score_uncali =
+      (-4.7567) + 
+      favg_ltv_bds_l6m_woe * (-1.0855) +
+      # fmonth_since_last_dpd_l6m_woe * (-0.27581) + 
+      favg_usage_limit_l6m_woe * (-1.1173) +
+      # fmax_ost_l6m_over_current_ost_woe * (-0.47232) +
+      febitda_laivay_woe * (-1.0150) +
+      # flnst_vcsh_woe * (-0.5548) +
+      fmax_dpd_l6m_woe * (-1.0930)
+      # fage_woe * (-0.68054) +
+      # ftongno_vcsh_woe * (-1.1122)
+    ,pd = round(exp(score_uncali)/(1+exp(score_uncali)),3)
+    ,score_cali = round(offset + factor*log((1-pd)/pd),0)
+    ,bin = ntile(score_cali, 10)
+  ) %>% data.frame()
+
+# pd_val_data2 <- data_with_pred_val %>%
+#   mutate(
+#     score_cali = round(offset + factor*log((1-pd)/pd),0)
+#     ,bin = ntile(score_cali, 10)
+#   ) %>% data.frame()
+## lấy ngưỡng cutoff
+pd_dev_data2 <- pd_dev_data2 %>% arrange(pd)
+
+cut_off2 <- quantile(pd_dev_data2$pd,0.8,na.rm=TRUE)
+
+## cắt điểm thang 10  
+
+binning_train2 <- pd_dev_data %>% group_by(bin) %>%
+  summarise(max_bin = max(score_cali)
+            ,min_bin = min(score_cali))
+
+cut_bin_pd_10 <- data.frame(as.vector(bin_data(pd_dev_data[,c(10)],bins=12, binType = "quantile",returnDT=TRUE)))
+
+as.vector(sqldf("select distinct Bin from cut_bin_pd_10"))
+
+
+binloan_dev_pd <- sqldf("select TAG_GB,case when score_cali <672 then 1
+                                     when score_cali >=672 and score_cali <677 then 2
+                                     when score_cali >=677 and score_cali <696 then 3
+                                     when score_cali >=696 and score_cali <708 then 4
+                                     when score_cali >=708 and score_cali <741 then 5
+                                     when score_cali >=741 and score_cali <782 then 6
+                                     when score_cali >=782 and score_cali <803 then 7
+                                     when score_cali >=803 and score_cali <832 then 8
+                                     when score_cali >=832 and score_cali <882 then 9
+                                     when score_cali >=882 then 10
+                                     end score,count(*)
+                                      from pd_dev_data
+                                GROUP BY TAG_GB,case when score_cali <672 then 1
+                                     when score_cali >=672 and score_cali <677 then 2
+                                     when score_cali >=677 and score_cali <696 then 3
+                                     when score_cali >=696 and score_cali <708 then 4
+                                     when score_cali >=708 and score_cali <741 then 5
+                                     when score_cali >=741 and score_cali <782 then 6
+                                     when score_cali >=782 and score_cali <803 then 7
+                                     when score_cali >=803 and score_cali <832 then 8
+                                     when score_cali >=832 and score_cali <882 then 9
+                                     when score_cali >=882 then 10
+                                     end")
+
+
+
+## tính gini 
+data_gini_dev2 <- pd_dev_data2 %>% select(score_cali,tag_gb,bin) %>% 
+  # left_join(cut_bin_pd_10,by = c("score_uncali_binning"="BinVal")) %>%
+  group_by(bin) %>%
+  summarise(total_obs = n()
+            ,bad_obs = sum(tag_gb==1)
+            ,good_obs = sum(tag_gb==0)
+  ) %>%
+  mutate(percent_dis_train = total_obs/sum(total_obs)
+         ,percent_bad = bad_obs/sum(bad_obs)
+         ,percent_good = good_obs/sum(good_obs)
+         ,bad_rate = bad_obs/sum(total_obs)
+         ,cum_percent_bad =cumsum(percent_bad)
+         ,cum_percent_good =cumsum(percent_good)
+         ,gini_thanhphan = dplyr::if_else(lag(cum_percent_bad) %in% c(0, NA)
+                                          ,cum_percent_good*0.5*cum_percent_bad
+                                          ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
+         )
+         ,gini_total = (0.5-sum(gini_thanhphan))/0.5
+  )
+
+
+#val
+names(dt_woe_val)
+
+pd_val_data <- dt_woe_val %>% select(tag_gb,all_of(attr(terms(m1), "term.labels"))) %>%
+  mutate(
+    score_uncali =
+      (-4.7567) + 
+      favg_ltv_bds_l6m_woe * (-1.0855) +
+      # fmonth_since_last_dpd_l6m_woe * (-0.27581) + 
+      favg_usage_limit_l6m_woe * (-1.1173) +
+      # fmax_ost_l6m_over_current_ost_woe * (-0.47232) +
+      febitda_laivay_woe * (-1.0150) +
+      # flnst_vcsh_woe * (-0.5548) +
+      fmax_dpd_l6m_woe * (-1.0930)
+    # fage_woe * (-0.68054) +
+    # ftongno_vcsh_woe * (-1.1122)
+    ,pd = round(exp(score_uncali)/(1+exp(score_uncali)),3)
+    ,score_cali = round(offset + factor*log((1-pd)/pd),0)
+    # ,score_cali_binning = ntile(score_cali, 5)
+    ,tag_gb_predict = case_when(pd>=cut_off ~ 1,TRUE ~ 0)
+    ,bin = case_when(score_cali <= binning_train$max_bin[binning_train$bin == 1] ~ 1
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 2] & score_cali<=binning_train$max_bin[binning_train$bin == 2] ~ 2
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 3] & score_cali<=binning_train$max_bin[binning_train$bin == 3] ~ 3
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 4] & score_cali<=binning_train$max_bin[binning_train$bin == 4] ~ 4
+                     # ,score_cali >binning_train$min_bin[binning_train$bin == 5] ~ 5
+                     
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 5] & score_cali<=binning_train$max_bin[binning_train$bin == 5] ~ 5
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 6] & score_cali<=binning_train$max_bin[binning_train$bin == 6] ~ 6
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 7] & score_cali<=binning_train$max_bin[binning_train$bin == 7] ~ 7
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 8] & score_cali<=binning_train$max_bin[binning_train$bin == 8] ~ 8
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 9] & score_cali<=binning_train$max_bin[binning_train$bin == 9] ~ 9
+                     ,score_cali >binning_train$min_bin[binning_train$bin == 10] ~ 10)
+  ) %>% data.frame()
+
+
+binloan_val_pd <- sqldf("select TAG_GB,case when score_cali <672 then 1
+                                     when score_cali >=672 and score_cali <677 then 2
+                                     when score_cali >=677 and score_cali <696 then 3
+                                     when score_cali >=696 and score_cali <708 then 4
+                                     when score_cali >=708 and score_cali <741 then 5
+                                     when score_cali >=741 and score_cali <782 then 6
+                                     when score_cali >=782 and score_cali <803 then 7
+                                     when score_cali >=803 and score_cali <832 then 8
+                                     when score_cali >=832 and score_cali <882 then 9
+                                     when score_cali >=882 then 10
+                                     end score,count(*)
+                                      from pd_val_data
+                                GROUP BY TAG_GB,case when score_cali <672 then 1
+                                     when score_cali >=672 and score_cali <677 then 2
+                                     when score_cali >=677 and score_cali <696 then 3
+                                     when score_cali >=696 and score_cali <708 then 4
+                                     when score_cali >=708 and score_cali <741 then 5
+                                     when score_cali >=741 and score_cali <782 then 6
+                                     when score_cali >=782 and score_cali <803 then 7
+                                     when score_cali >=803 and score_cali <832 then 8
+                                     when score_cali >=832 and score_cali <882 then 9
+                                     when score_cali >=882 then 10
+                                     end")
+
+data_gini_val <- pd_val_data %>% select(bin,tag_gb) %>% 
+  group_by(bin) %>%
+  summarise(total_obs = n()
+            ,bad_obs = sum(tag_gb==1)
+            ,good_obs = sum(tag_gb==0)
+  ) %>%
+  mutate(percent_dis_val = total_obs/sum(total_obs)
+         ,percent_bad = bad_obs/sum(bad_obs)
+         ,percent_good = good_obs/sum(good_obs)
+         ,bad_rate = bad_obs/sum(total_obs)
+         ,cum_percent_bad =cumsum(percent_bad)
+         ,cum_percent_good =cumsum(percent_good)
+         ,gini_thanhphan = dplyr::if_else(lag(cum_percent_bad) %in% c(0, NA),cum_percent_good*0.5*cum_percent_bad
+                                          ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
+         )
+         ,gini_total = (0.5-sum(gini_thanhphan))/0.5
+  )
+### tính PSI
+psi_model <- data_gini_dev %>% 
+  left_join(data_gini_val,by = c("bin"="bin")) %>% 
+  mutate(psi_component_train_test = round((percent_dis_train-percent_dis_val)*log(percent_dis_train/percent_dis_val),2)
+         ,psi_sum_train_test = sum(psi_component_train_test)
+  )
+
+### tính f1score
+
+library(MLmetrics)
+
+# Y_true, Y_pred là vector nhị phân {0,1}
+Precision(y_pred = pd_val_data$tag_gb_predict, y_true = pd_val_data$tag_gb, positive = "1")
+Recall(y_pred = pd_val_data$tag_gb_predict,y_true = pd_val_data$tag_gb, positive = "1")
+F1_Score(y_pred = pd_val_data$tag_gb_predict, y_true = pd_val_data$tag_gb, positive = "1")
+
+
+############################## tính PD danh mục tháng 3
+## lấy danh mục
+data_bien_taisan_ews_t3 <- dbGetQuery(con, "SELECT * FROM bien_tsbd_ews_20260331")
+data_bien_tindung_ews_t3 <- dbGetQuery(con, "SELECT * FROM bien_tindung_ews_20260331") 
+
+obs_t3 <- data_bien_tindung_ews_t3 %>% left_join(data_bien_taisan_ews_t3
+                                                 , by =c("snapshot_date"="snapshot_date"
+                                                         ,"customer_id"="customer_id")
+                                                 ,suffix = c("",".left")) %>% clean_names() %>%
+  mutate(across(where(is.numeric),~ replace_na(.x, 0)))
+
+obs_t3 <- obs_t3 %>% select(everything(),-snapshot_date,-total_ost,-nhomno,-max_dpd)
+
+########################## bin lại từng biến #########################
+obs_t3$fmax_dpd_l6m<- cut(obs_t3$max_dpd_l6m, #OK
+                            breaks = c("-Inf",1,5,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+obs_t3$fmonth_since_last_dpd_l6m<- cut(obs_t3$month_since_last_dpd_l6m, #OK
+                                         breaks = c("-Inf",1,3,"Inf"),
+                                         include.lowest =TRUE,
+                                         right = FALSE)
+
+obs_t3$fmax_arrear_l6m_ost<- cut(obs_t3$max_arrear_l6m_ost, #OK
+                                   breaks = c("-Inf",0.01,0.03,"Inf"),
+                                   include.lowest =TRUE,
+                                   right = FALSE)
+
+obs_t3$favg_ost_l6m_over_current_ost<- cut(obs_t3$avg_ost_l6m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.01,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+obs_t3$fmax_ost_l3m_over_current_ost<- cut(obs_t3$max_ost_l3m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.02,1.21,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+obs_t3$fmax_ost_l6m_over_current_ost<- cut(obs_t3$max_ost_l6m_over_current_ost, #OK
+                                             breaks = c("-Inf",1.04,1.64,"Inf"),
+                                             include.lowest =TRUE,
+                                             right = FALSE)
+
+obs_t3$fmax_usage_limit_l3m<- cut(obs_t3$max_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.9,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+obs_t3$fmin_usage_limit_l3m<- cut(obs_t3$min_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.7,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+obs_t3$favg_usage_limit_l3m<- cut(obs_t3$avg_usage_limit_l3m, #OK
+                                    breaks = c("-Inf",0.9,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+obs_t3$favg_usage_limit_l6m<- cut(obs_t3$avg_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.95,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+obs_t3$fmin_usage_limit_l6m<- cut(obs_t3$min_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.55,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+obs_t3$fmax_usage_limit_l6m<- cut(obs_t3$max_usage_limit_l6m, #OK
+                                    breaks = c("-Inf",0.95,1,"Inf"),
+                                    include.lowest =TRUE,
+                                    right = FALSE)
+
+obs_t3$fage<- cut(obs_t3$age, #OK
+                    breaks = c("-Inf",44,54,"Inf"),
+                    include.lowest =TRUE,
+                    right = FALSE)
+
+obs_t3$favg_ltv_l3m<- cut(obs_t3$avg_ltv_l3m, #OK
+                            breaks = c(0,0.01,0.7,0.9,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+obs_t3$fmax_ltv_l3m<- cut(obs_t3$max_ltv_l3m, #OK
+                            breaks = c(0,0.01,0.7,0.9,"Inf"),
+                            include.lowest =TRUE,
+                            right = FALSE)
+
+obs_t3$fmax_ltv_kh_l6m<- cut(obs_t3$max_ltv_kh_l6m, #OK
+                               breaks = c(0,0.01,0.7,0.9,"Inf"),
+                               include.lowest =TRUE,
+                               right = FALSE)
+
+obs_t3$fsoluong_sanpham<- cut(obs_t3$soluong_sanpham, #OK
+                                breaks = c(1,2,"Inf"),
+                                include.lowest =TRUE,
+                                right = FALSE)
+
+obs_t3$fthang_nhapkho_gannhat<- cut(obs_t3$thang_nhapkho_gannhat, #OK
+                                      breaks = c("-Inf",12,48,"Inf"),
+                                      include.lowest =TRUE,
+                                      right = FALSE)
+######################### tính WOE sau khi bin lại ###################
+##woe numeric
+names(obs_t3)
+## APPLY WOE vao OBS
+dt_woe_t3 = woebin_ply(obs_t3[,c(1,51:57)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data goc
+
+## tính PD cho tháng 3
+dt_woe_keep <- dt_woe_1 %>% select(all_of(to_keep),tag_gb)
+dt_woe_keep$tag_gb <-as.factor(dt_woe_keep$tag_gb)
+
+
+new_task <- TaskClassif$new(
+  id     = "prod",
+  backend = dt_woe_t3 %>% select(all_of(to_keep),tag_gb),
+  target  = task$target_names
+)
+
+prediction_new <- learner$predict(new_task)
+
+
+## xem dpd tháng 4
+td_20260422 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_TINDUNG_20260422.txt",sep ="$") %>% clean_names()
+thauchi_quahan_20260422 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_THAUCHI_QUAHAN_20260422.txt",sep ="$") %>% clean_names()
+thauchi_20260422 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_THAUCHI_20260422.txt",sep ="$") %>% clean_names()
+visa_20260422 <- read.delim("D:\\Data Minh\\BAOCAO\\SAOKE\\SAOKE_CARD_VISA_20260422.txt",sep ="$") %>% clean_names()
+
+
+td_sub <- td_20260422 %>% select(customer,songay_qhan_caonhat,asset_class) 
+thauchi_quahan_sub <- thauchi_quahan_20260422 %>% select(customer,songay_qhan_caonhat,asset_class)
+thauchi_sub <- thauchi_20260422 %>% select(customer) %>% mutate(dpd = 0, nhomno =1)
+visa_sub <- visa_20260422 %>% select(cif,over_days,loan_group) %>% 
+  mutate(over_days = case_when(over_days == "null" ~"0",TRUE ~ over_days)
+         ,dpd =as.numeric(over_days)
+         ,loan_group = case_when(loan_group == "null" ~"0",TRUE ~ loan_group)
+         ,loan_group = as.numeric(loan_group)
+  ) %>% select(cif,dpd,loan_group)
+
+chovay_20260422 <- sqldf("with A as (select * from td_sub
+                         union all
+                         select * from thauchi_quahan_sub
+                         union all
+                         select * from thauchi_sub
+                         union all
+                         select * from visa_sub
+                                )
+                          select cast(customer as varchar(50))customer
+                                      ,max(cast(songay_qhan_caonhat as float))max_dpd,max(asset_class)nhomno
+                           from A
+                           group by cast(customer as varchar(50))
+                         ")
+## thống kê
+pd_t3 <- pd_t3 %>% left_join(chovay_20260422,by = c("customer_id"="customer")) %>%
+  mutate(actual_bad = case_when(max_dpd >=10 ~ 1,TRUE ~ 0)
+  ) %>%
+  left_join(data_vay %>%
+              filter(txn_date %in% c("20260331","2026/01/31 00:00:00.000000000")) %>%
+              select(company_name,customer,vn_full_name) %>% distinct()
+            ,by = c("customer_id"="customer")
+  )
+
+pd_t3_2 <- sqldf("select * from
+                    (select *,row_number()over(partition by customer_id order by company_name desc)stt
+                        from pd_t3)x
+                 where stt  =1")
+
+
+thongke <- pd_t3 %>% group_by(bin,tag_gb_predict) %>% 
+  summarise(slkh = n())
+
+write.xlsx(pd_t3_2,"D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\pd_t3.xlsx",colNames = TRUE)
+
+## tính ticket size
+ticket_size <- pd_dev_data %>% group_by(bin) %>%
+  summarise(cnt_distinct = n_distinct(customer_id)
+            ,cnt_distinct_bad = n_distinct(customer_id[tag_gb == 1])
+            )
+
+
+
+
