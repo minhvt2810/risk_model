@@ -100,21 +100,32 @@ val_data_khdn = train_test_khdn$test
 
 dev_data_khdn <- dev_data_khdn %>% select(everything(),-snapshot_date,-customer_id)
 val_data_khdn <- val_data_khdn %>% select(everything(),-snapshot_date,-customer_id)
-# hàm tính IV
+## hàm tính IV
 
-# rm(bins)
-# class(val_data$snapshot_date)
-
-# val_data$tag_gb <- as.factor(val_data$tag_gb)
-
+# rm(bins_khdn)
+#bin ban đầu
 bins_khdn <- woebin(dev_data_khdn, y = "tag_gb"
                ,bin_num_limit=10, positive = "bad|0"
                , method = "tree"
-               ,count_distr_limit=0.01
+               ,count_distr_limit=0.05
                ,stop_limit=0.01
-)  # hoặc "chimerge"
+               ,special_values=-99
+               )  # hoặc "chimerge"
+# lọc lấy các biến có số lượng bin <=4 và >2
+bins_khdn2 <- bins_khdn[sapply(bins_khdn, nrow) <=4 & sapply(bins_khdn, nrow) >2]
+ 
+#bin các biến số lượng bin lớn hơn 4
+names_bin <- bins_khdn[sapply(bins_khdn, nrow) > 4] %>% names()
 
-
+bins_khdn3 <- woebin(dev_data_khdn %>% select(tag_gb,all_of(names_bin)), y = "tag_gb"
+                    ,bin_num_limit=3, positive = "bad|0"
+                    , method = "tree"
+                    ,count_distr_limit=0.1
+                    ,stop_limit=0.01
+                    ,special_values=-99
+                    )
+# gộp lấy bin các biến final
+bins_khdn_final <- c(bins_khdn2,bins_khdn3)
 # Xem chi tiết 1 biến
 bins$age
 bins$gioitinh
@@ -124,7 +135,7 @@ hs <- createStyle(border ="TopBottomLeftRight",
                   textDecoration = "BOLD", fontColour = "#FFFFFF", fontSize = 12,
                   fontName = "Cambria Narrow", fgFill = "#4F80BD",wrapText=FALSE)
 
-openxlsx::write.xlsx(bins_khdn, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx",rowNames=FALSE,
+openxlsx::write.xlsx(bins_khdn_final, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx",rowNames=FALSE,
                      colNames = TRUE, overwrite = TRUE,
                      borders = "all",gridLines =TRUE
                      ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
@@ -133,29 +144,30 @@ openxlsx::write.xlsx(bins_khdn, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx",
 
 
 ##lấy các biến có iv>=10%
-
 # Tinh PSI
-psi_1 <- get_psi_all(
-  dat=dev_data[,c(4:74)],
-  x_list = NULL,
-  target = NULL,
-  dat_test = val_data[,c(4:74)],
-  breaks_list = NULL,
-  occur_time = NULL,
-  start_date = NULL,
-  cut_date = NULL,
-  #oot_pct = 0.7,
-  pos_flag = NULL,
-  parallel = FALSE,
-  ex_cols = NULL,
-  as_table = FALSE,
-  g = 10,
-  bins_no = TRUE,
-  note = FALSE
-)
+# psi_1 <- get_psi_all(
+#   dat=dev_data[,c(4:74)],
+#   x_list = NULL,
+#   target = NULL,
+#   dat_test = val_data[,c(4:74)],
+#   breaks_list = NULL,
+#   occur_time = NULL,
+#   start_date = NULL,
+#   cut_date = NULL,
+#   #oot_pct = 0.7,
+#   pos_flag = NULL,
+#   parallel = FALSE,
+#   ex_cols = NULL,
+#   as_table = FALSE,
+#   g = 10,
+#   bins_no = TRUE,
+#   note = FALSE
+# )
 
-## gộp IV và PSI
+## gộp IV, missing và trend
+
 sheet_names <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx")  # extract sheet names
+expected_trend <- read_excel("D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\trend.xlsx")
 
 combined <- sheet_names %>%
   purrr::set_names() %>%
@@ -163,11 +175,26 @@ combined <- sheet_names %>%
   bind_rows(.id = "Biến") %>%
   mutate(bad_rate = neg/count) %>%
   group_by(variable) %>%
-  mutate(max_dis =max(count_distr)) %>%
+  mutate(max_dis =max(count_distr)
+         ,dis_missing = max(count_distr[bin=="-99"],na.rm = TRUE)
+         ) %>%
   ungroup() %>%
-  filter(total_iv >= 0.02) #%>% # lấy các biến có iv>=10% và mức độ tập trung data <90%
-#left_join(psi_1 %>% data.frame(),by = c("variable"="Feature"))
-
+  group_by(variable) %>% 
+  mutate(trend_decre = all(diff(bad_rate) < 0)## xét actual trend
+         ,trend_incre = all(diff(bad_rate) > 0)
+         ,trend_decre = case_when(trend_decre == "TRUE" ~ -1, TRUE ~ 0)
+         ,trend_incre = case_when(trend_incre == "TRUE" ~ 1, TRUE ~ 0)
+         ,trend_actual = case_when(trend_decre == -1 ~ -1
+                                   ,trend_incre == 1 ~ 1
+                                   ,TRUE ~ 0
+                                   )
+         ) %>%
+  left_join(expected_trend,by = c("variable"="variable")) %>%
+  filter(total_iv >= 0.02 
+         & dis_missing<0.3 
+         # & (expected_trend == trend_actual)
+         ) # lấy các biến có iv>=2% và mức độ missing<30%
+# write.xlsx(combined, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\trend.xlsx",rowNames=FALSE)
 openxlsx::write.xlsx(combined, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var4_khdn.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
                      colNames = TRUE, overwrite = TRUE,
                      borders = "all",gridLines =TRUE
@@ -224,26 +251,29 @@ dev_data_khdn$fthang_nhapkho_gannhat<- cut(dev_data_khdn$thang_nhapkho_gannhat, 
 ##woe numeric
 
 # names(dev_data_khdn)
-bins_woe_num = woebin(dev_data_khdn[,c(4,5:55)], y = "tag_gb",
-                      ,positive="bad|0" #### bad|0 là tag_gb có bad=1
-                      ,check_cate_num=TRUE
-                      ,no_cores = 1
-                      ,count_distr_limit =0.01)
+# name_var <- combined %>% select(variable) %>% distinct() %>% as.vector()
+# name_var2 <- name_var$variable
 
-list_var_final <- data.frame()
+# bins_woe_num = woebin(dev_data_khdn %>% select(tag_gb,all_of(name_var2)), y = "tag_gb",
+#                       ,positive="bad|0" #### bad|0 là tag_gb có bad=1
+#                       ,check_cate_num=TRUE
+#                       ,no_cores = 1
+#                       ,count_distr_limit =0.01)
 
-for (i in bins_woe_num) {
-  x <- data.frame(i)
-  list_var_final <- rbind(x,list_var_final)
-}
-
-list_var_final2 <- list_var_final %>%
-  select(everything(),-breaks,-is_special_values,-bin_iv,-posprob,-pos) %>% 
-  mutate(bad_rate = neg/count)
-
-write.xlsx(list_var_final2,"D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\list_var_final2.xlsx",colNames = TRUE)
+# list_var_final <- data.frame()
+# 
+# for (i in bins_woe_num) {
+#   x <- data.frame(i)
+#   list_var_final <- rbind(x,list_var_final)
+# }
+# 
+# list_var_final2 <- list_var_final %>%
+#   select(everything(),-breaks,-is_special_values,-bin_iv,-posprob,-pos) %>% 
+#   mutate(bad_rate = neg/count)
+# 
+# write.xlsx(list_var_final2,"D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\list_var_final2.xlsx",colNames = TRUE)
 ##woe NOT numeric
-# names(dev_data)
+# names(dev_data_khdn)
 # glimpse(val_data$AVG_UNIT_PRICE_MORTGAGE)
 
 # breaks_list = list(
@@ -257,12 +287,15 @@ write.xlsx(list_var_final2,"D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\list_var_final2.
 #                 ,check_cate_num=TRUE, no_cores = 1)
 
 ## APPLY WOE vao OBS
-dt_woe_1 = woebin_ply(dev_data_khdn[,c(4,5:55)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data goc
+names(dev_data_khdn)
+name_var <- combined %>% select(variable) %>% distinct() %>% as.vector()
+name_var2 <- name_var$variable
+
+dev_data_khdn2 <- dev_data_khdn %>% select(all_of(name_var2),tag_gb)
+
+dt_woe_1 <- woebin_ply(dev_data_khdn2, bins=combined, no_cores = 1)## alpply woe vao data goc
 
 dt_woe_1$tag_gb <-as.numeric(dt_woe_1$tag_gb)
-
-# dt_woe2 = woebin_ply(val_data[,c(4,c(5:51))], bins=bins_woe_num, to ='bin')## apply cac bin vao data goc
-# dt_woe_1$tag_gb <-as.factor(dt_woe_1$tag_gb)
 # names(dt_woe_1)
 # rm(dt_woe)
 
@@ -281,61 +314,6 @@ res[is.na(res)] <- 0# xử lí NA
 to_drop <- findCorrelation(res, cutoff = 0.85, names = TRUE, exact = TRUE)# Chọn biến nên loại với ngưỡng |r| > 0.85
 
 to_keep <- setdiff(names(dt_corr), to_drop)# Giữ lại phần còn lại
-
-dt_woe_keep <- dt_woe_1 %>% select(all_of(to_keep),tag_gb)
-dt_woe_keep$tag_gb <-as.factor(dt_woe_keep$tag_gb)
-## chạy correl theo loại IV
-
-remove_corr_by_iv <- function(cor_matrix, iv_table, cutoff = 0.85){
-  
-  vars_remove <- c()
-  
-  high_corr <- which(abs(cor_matrix) > cutoff &
-                       abs(cor_matrix) < 1,
-                     arr.ind = TRUE)
-  
-  for(i in seq_len(nrow(high_corr))){
-    
-    v1 <- rownames(cor_matrix)[high_corr[i, 1]]
-    v2 <- colnames(cor_matrix)[high_corr[i, 2]]
-    
-    if(v1 %in% vars_remove | v2 %in% vars_remove)
-      next
-    
-    iv1 <- iv_table$IV[match(v1, iv_table$Variable)]
-    iv2 <- iv_table$IV[match(v2, iv_table$Variable)]
-    
-    if(iv1 >= iv2){
-      vars_remove <- c(vars_remove, v2)
-    } else{
-      vars_remove <- c(vars_remove, v1)
-    }
-  }
-  
-  unique(vars_remove)
-}
-
-
-name_var <- combined %>% select(variable) %>% distinct() %>% as.vector()
-name_var2 <- name_var$variable
-
-name_var2 <- name_var2[!name_var2 %in% c("total_ost")]
-
-
-names(dt_woe_1) <- gsub("_woe", "", names(dt_woe_1))# xóa woe khỏi tên cột
-dt_corr <- dt_woe_1 %>% select(tag_gb,all_of(name_var2))
-
-res <- cor(dt_corr)
-diag(res) <- 1# xử lí NA
-res[is.na(res)] <- 0# xử lí NA
-
-
-combined2 <- combined %>% select(variable,total_iv) %>% distinct() %>% 
-  select(IV=total_iv,Variable=variable)# lay bang IV
-
-
-to_remove <- remove_corr_by_iv(res,combined2, cutoff = 0.85)# cac bien loai
-to_keep <- setdiff(names(dt_corr), to_remove)# cac bien giu
 
 dt_woe_keep <- dt_woe_1 %>% select(all_of(to_keep),tag_gb)
 dt_woe_keep$tag_gb <-as.factor(dt_woe_keep$tag_gb)
@@ -374,7 +352,7 @@ cluster_iv <- cluster_df %>%
 
 selected_vars <- cluster_iv %>%
   group_by(Cluster) %>%
-  slice_max(IV, n = 1, with_ties = FALSE) %>%
+  slice_max(IV, n = 1, with_ties = TRUE) %>% #TRUE để chọn nhiều dòng cùng max
   ungroup()
 
 selected_vars
@@ -403,7 +381,7 @@ instance <- fselect(
   learner = learner,
   resampling = rsmp("cv", folds = 5),             # cross-validation
   measure = msr("classif.auc"),                    # classification error
-  term_evals = 20                               # số vòng lặp
+  # term_evals = 20                               # số vòng lặp
   # ,min_features = 5                                # số feature tối thiểu
 )
 
@@ -436,7 +414,6 @@ vars_r2 <- coef_table[coef_table$rowname != "(Intercept)","rowname"] # danh sác
 m2 <- update(m1, as.formula(paste(". ~ . -", paste(vars_r2, collapse = " - "))))
 
 summary(m2)
-
 # # Tính xác suất (PD) cho từng quan sát
 # prediction <- learner$predict(task)
 # # Lấy xác suất default
@@ -502,10 +479,18 @@ val_data_khdn$fthang_nhapkho_gannhat<- cut(val_data_khdn$thang_nhapkho_gannhat, 
 
 
 # names(val_data_khdn)
-dt_woe_val = woebin_ply(val_data_khdn[,c(1,2,6,67:75)], bins=bins_woe_num, no_cores = 1)## alpply woe vao data val
+name_var <- combined %>% select(variable) %>% distinct() %>% as.vector()
+name_var2 <- name_var$variable
+name_var2 <- name_var2[!name_var2 %in% c("favg_usage_limit_l6m")]
+dev_var <- attr(terms(m2), "term.labels")
 
-dt_woe_keep_val <- dt_woe_val %>% select(all_of(to_keep),tag_gb)
-dt_woe_keep_val$tag_gb <-as.factor(dt_woe_keep_val$tag_gb)
+val_data_khdn2 <- val_data_khdn %>% select(all_of(dev_var),tag_gb)
+
+dt_woe_val = woebin_ply(val_data_khdn2, bins=combined, no_cores = 1)## alpply woe vao data val
+
+dt_woe_val$tag_gb <-as.factor(dt_woe_val$tag_gb)
+
+names(dt_woe_val) <- gsub("_woe", "", names(dt_woe_val))# xóa woe khỏi tên cột
 
 # task_val <- TaskClassif$new(id = "credit", backend = dt_woe_keep_val, target = "tag_gb")
 # 
@@ -532,25 +517,23 @@ factor <- pdo/log(2)
 odd <- 20
 offset <- base_score - factor*log(odd)
 
-pd_dev_data2 <- data_with_pred %>%
+# pd_dev_data2 <- data_with_pred %>%
+#   mutate(
+#      score_cali = round(offset + factor*log((1-pd)/pd),0)
+#     ,bin = ntile(score_cali, 10)
+#   ) %>% data.frame()
+# summary(m2)
+pd_dev_data <- dt_woe_1 %>% select(all_of(attr(terms(m2), "term.labels")),tag_gb) %>%
   mutate(
-     score_cali = round(offset + factor*log((1-pd)/pd),0)
-    ,bin = ntile(score_cali, 10)
-  ) %>% data.frame()
-
-pd_dev_data <- dt_woe_1 %>% select(snapshot_date,customer_id,tag_gb,all_of(attr(terms(m1), "term.labels"))) %>%
-  mutate(
-    score_uncali =
-      (-4.7567) + 
-      favg_ltv_bds_l6m_woe * (-1.0855) +
-      # fmonth_since_last_dpd_l6m_woe * (-0.27581) + 
-      favg_usage_limit_l6m_woe * (-1.1173) +
-      # fmax_ost_l6m_over_current_ost_woe * (-0.47232) +
-      febitda_laivay_woe * (-1.0150) +
-      # flnst_vcsh_woe * (-0.5548) +
-      fmax_dpd_l6m_woe * (-1.0930)
-      # fage_woe * (-0.68054) +
-      # ftongno_vcsh_woe * (-1.1122)
+    score_uncali = 
+      (-2.76915) + 
+      max_dpd_l6m * (-0.73360) +
+      max_ltv_l6m * (-0.41874) +
+      max_usage_limit_l6m * (-0.26491) +
+      thang_nhapkho_gannhat * (-0.69511) +
+      min_ost_l6m_over_current_ost * (-0.82086) +
+      min_usage_limit_l6m * (-0.47708) +
+      mob * (-0.81119)
     ,pd = round(exp(score_uncali)/(1+exp(score_uncali)),3)
     ,score_cali = round(offset + factor*log((1-pd)/pd),0)
     ,bin = ntile(score_cali, 10)
@@ -562,17 +545,17 @@ pd_dev_data <- dt_woe_1 %>% select(snapshot_date,customer_id,tag_gb,all_of(attr(
 #     ,bin = ntile(score_cali, 10)
 #   ) %>% data.frame()
 ## lấy ngưỡng cutoff
-pd_dev_data2 <- pd_dev_data2 %>% arrange(pd)
+pd_dev_data <- pd_dev_data %>% arrange(pd)
 
-cut_off2 <- quantile(pd_dev_data2$pd,0.8,na.rm=TRUE)
+cut_off <- quantile(pd_dev_data$pd,0.8,na.rm=TRUE)
 
 ## cắt điểm thang 10  
 
-binning_train2 <- pd_dev_data %>% group_by(bin) %>%
+binning_train <- pd_dev_data %>% group_by(bin) %>%
   summarise(max_bin = max(score_cali)
             ,min_bin = min(score_cali))
 
-cut_bin_pd_10 <- data.frame(as.vector(bin_data(pd_dev_data[,c(10)],bins=12, binType = "quantile",returnDT=TRUE)))
+cut_bin_pd_10 <- data.frame(as.vector(bin_data(pd_dev_data[,c(10)],bins=10, binType = "quantile",returnDT=TRUE)))
 
 as.vector(sqldf("select distinct Bin from cut_bin_pd_10"))
 
@@ -604,7 +587,7 @@ binloan_dev_pd <- sqldf("select TAG_GB,case when score_cali <672 then 1
 
 
 ## tính gini 
-data_gini_dev2 <- pd_dev_data2 %>% select(score_cali,tag_gb,bin) %>% 
+data_gini_dev <- pd_dev_data %>% select(score_cali,tag_gb,bin) %>% 
   # left_join(cut_bin_pd_10,by = c("score_uncali_binning"="BinVal")) %>%
   group_by(bin) %>%
   summarise(total_obs = n()
@@ -628,23 +611,21 @@ data_gini_dev2 <- pd_dev_data2 %>% select(score_cali,tag_gb,bin) %>%
 #val
 names(dt_woe_val)
 
-pd_val_data <- dt_woe_val %>% select(tag_gb,all_of(attr(terms(m1), "term.labels"))) %>%
+pd_val_data <- dt_woe_val %>%
   mutate(
-    score_uncali =
-      (-4.7567) + 
-      favg_ltv_bds_l6m_woe * (-1.0855) +
-      # fmonth_since_last_dpd_l6m_woe * (-0.27581) + 
-      favg_usage_limit_l6m_woe * (-1.1173) +
-      # fmax_ost_l6m_over_current_ost_woe * (-0.47232) +
-      febitda_laivay_woe * (-1.0150) +
-      # flnst_vcsh_woe * (-0.5548) +
-      fmax_dpd_l6m_woe * (-1.0930)
-    # fage_woe * (-0.68054) +
-    # ftongno_vcsh_woe * (-1.1122)
+    score_uncali = 
+      (-2.76915) + 
+      max_dpd_l6m * (-0.73360) +
+      max_ltv_l6m * (-0.41874) +
+      max_usage_limit_l6m * (-0.26491) +
+      thang_nhapkho_gannhat * (-0.69511) +
+      min_ost_l6m_over_current_ost * (-0.82086) +
+      min_usage_limit_l6m * (-0.47708) +
+      mob * (-0.81119)
     ,pd = round(exp(score_uncali)/(1+exp(score_uncali)),3)
     ,score_cali = round(offset + factor*log((1-pd)/pd),0)
     # ,score_cali_binning = ntile(score_cali, 5)
-    ,tag_gb_predict = case_when(pd>=cut_off ~ 1,TRUE ~ 0)
+    ,tag_gb_predict = case_when(pd>=cut_off2 ~ 1,TRUE ~ 0)
     ,bin = case_when(score_cali <= binning_train$max_bin[binning_train$bin == 1] ~ 1
                      ,score_cali >binning_train$min_bin[binning_train$bin == 2] & score_cali<=binning_train$max_bin[binning_train$bin == 2] ~ 2
                      ,score_cali >binning_train$min_bin[binning_train$bin == 3] & score_cali<=binning_train$max_bin[binning_train$bin == 3] ~ 3
