@@ -1,0 +1,54 @@
+install.packages(c("devtools", "usethis", "roxygen2"))
+library(devtools)
+library(usethis)
+library(roxygen2)
+library(desc)
+library(whisker)
+library(rlang)
+library(gert)
+library(credentials)
+library(sys)
+library(remotes)
+library(gh)
+# remove.packages("rlang")
+# use_github()
+# system("git --version")
+# system("git remote -v")
+# system("git branch")
+# usethis::git_sitrep()
+# system("git branch")
+# list.files()
+# Liên kết repository local
+system('git remote add origin https://github.com/minhvt2810/package_risk.git')
+# Push lên GitHub
+system('git push -u origin master')#Nếu nhánh là master:
+system('git push -u origin main')#Nếu nhánh là main
+#tạo mục cho package
+usethis::create_package("logisticgridsearch")
+
+
+devtools::document()
+
+#kiểm tra package
+devtools::check()
+
+
+# khởi tạo git
+setwd("D:\\Data Minh\\logisticgridsearch")
+
+usethis::use_git()
+
+# Tạo repository trên GitHub rồi:
+usethis::use_github()
+
+# Máy khác chỉ cần:
+# install.packages("remotes")
+
+remotes::install_github(
+  "minhvt2810/package_risk"
+)
+
+# Sử dụng:
+library(package_risk)
+ls("package:package_risk")
+x <- bin_score(dev_data_khdn,tag_gb)
