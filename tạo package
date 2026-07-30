@@ -18,11 +18,6 @@ library(gh)
 # usethis::git_sitrep()
 # system("git branch")
 # list.files()
-# Liên kết repository local
-system('git remote add origin https://github.com/minhvt2810/package_risk.git')
-# Push lên GitHub
-system('git push -u origin master')#Nếu nhánh là master:
-system('git push -u origin main')#Nếu nhánh là main
 #tạo mục cho package
 usethis::create_package("logisticgridsearch")
 
@@ -33,13 +28,21 @@ devtools::document()
 devtools::check()
 
 
-# khởi tạo git
+# khởi tạo git lưu ở máy
 setwd("D:\\Data Minh\\logisticgridsearch")
 
 usethis::use_git()
 
-# Tạo repository trên GitHub rồi:
-usethis::use_github()
+# Tạo repository trên GitHub
+usethis::use_git_remote("origin", url = NULL, overwrite = TRUE)
+
+# usethis::use_github()
+
+# Liên kết repository local
+system('git remote add origin https://github.com/minhvt2810/package_risk.git')
+# Push lên GitHub
+system('git push -u origin master')#Nếu nhánh là master:
+system('git push -u origin main')#Nếu nhánh là main
 
 # Máy khác chỉ cần:
 # install.packages("remotes")
