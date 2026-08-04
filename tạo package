@@ -19,7 +19,7 @@ library(gh)
 # system("git branch")
 # list.files()
 #tạo mục cho package
-usethis::create_package("logisticgridsearch")
+usethis::create_package("limitt24")
 
 
 devtools::document()
@@ -29,17 +29,33 @@ devtools::check()
 
 
 # khởi tạo git lưu ở máy
-setwd("D:\\Data Minh\\logisticgridsearch")
+setwd("D:\\Data Minh\\limitt24")
 
 usethis::use_git()
 
+## ghi hàm lên namespace
+writeLines(
+  c(
+    "export(read_sklimit)",
+    "export(sodu_quayvong_khongquayvong)"
+  ),
+  "NAMESPACE"
+)
+#tạo các dependancy
+usethis::use_package("dplyr")
+usethis::use_package("sqldf")
+usethis::use_package("tidyr")
+usethis::use_package("readxl")
+usethis::use_package("openxlsx")
+usethis::use_package("stringr")
+usethis::use_package("stringi")
 # Tạo repository trên GitHub
 usethis::use_git_remote("origin", url = NULL, overwrite = TRUE)
 
 # usethis::use_github()
 
 # Liên kết repository local
-system('git remote add origin https://github.com/minhvt2810/package_risk.git')
+system('git remote add origin https://github.com/minhvt2810/limitt24.git')
 # Push lên GitHub
 system('git push -u origin master')#Nếu nhánh là master:
 system('git push -u origin main')#Nếu nhánh là main
@@ -48,10 +64,18 @@ system('git push -u origin main')#Nếu nhánh là main
 # install.packages("remotes")
 
 remotes::install_github(
-  "minhvt2810/package_risk"
+  "minhvt2810/logisticgridsearch"
 )
 
+remotes::install_github("minhvt2810/limitt24", dependencies = TRUE)
 # Sử dụng:
-library(package_risk)
-ls("package:package_risk")
+# remove.packages("logisticgridsearch")
+library(logisticgridsearch)
+ls("package:logisticgridsearch")
+ls(getNamespace("logisticgridsearch"))
+
+
 x <- bin_score(dev_data_khdn,tag_gb)
+
+
+
