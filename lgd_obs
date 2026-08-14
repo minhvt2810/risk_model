@@ -1,0 +1,400 @@
+--gộp các sao kê
+WITH A AS (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date,customer,ld_id,CAST(amount_lcy AS FLOAT)sodu
+		      ,cast(songay_qhan_caonhat as float) as dpd
+			  ,ma_cra,case when approve_amount = 'null' then 0 else cast(approve_amount as float) end approve_amount
+			  ,'CHOVAY' loai_tindung
+			  ,pr+inte+pe+ps as arrear_amt
+			  ,asset_class,loai_co_cau
+			   from (select *
+			               ,case when overdue_pr_amount is null then 0 else overdue_pr_amount end pr
+			               ,case when overdue_in_amount ='null' then '0' else cast(overdue_in_amount as float) end inte
+						   ,case when overdue_pe_amount is null then 0 else cast(overdue_pe_amount as float) end pe
+						   ,case when overdue_ps_amount is null then 0 else  overdue_ps_amount end ps
+						  from [dbo].[sktd_202509_202602]
+			           )x----select * from [dbo].[sktd_202509_202602] where CONVERT(VARCHAR(20),convert(date,txn_date),112)='20251231'
+			        WHERE CUSTOMER IS NOT NULL AND CUSTOMER NOT IN ('null') and khoi ='INDIV'
+				--AND ma_sp not in('7' ,'12','105.02','107','107.01','107.02','107.03'
+				--,'107.99','112','112.99','115.01','115.02','115.03','ICV0201','ICV0202'
+				--,'ICV0902','ICV1103')
+        union
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date
+		      ,customer,ld_id
+			  ,CAST(amount_lcy AS FLOAT)sodu
+		      ,cast(songay_qhan_caonhat as float) as dpd
+			  ,ma_cra,case when approve_amount = 'null' then 0 else cast(approve_amount as float) end approve_amount
+			  ,'CHOVAY' loai_tindung
+			  ,pr+inte+pe+ps as arrear_amt
+			  ,asset_class,loai_co_cau
+			   from (select *
+			               ,case when overdue_pr_amount is null then 0 else overdue_pr_amount end pr
+			               ,case when overdue_in_amount is null then 0 else cast(overdue_in_amount as float) end inte
+						   ,case when overdue_pe_amount is null then 0 else cast(overdue_pe_amount as float) end pe
+						   ,case when overdue_ps_amount is null then 0 else  overdue_ps_amount end ps
+						  from [dbo].[data_sktd_202603_04]---select * from [dbo].[data_sktd_202603_04]
+						  where 1=1
+					--	  and productgr_code not in('7' ,'12','105.02','107','107.01','107.02','107.03'
+					--,'107.99','112','112.99','115.01','115.02','115.03','ICV0201','ICV0202'
+					--,'ICV0902','ICV1103')
+			           )x
+			        WHERE CUSTOMER IS NOT NULL AND CUSTOMER NOT IN ('null') and khoi ='INDIV'
+		union
+		select distinct CONVERT(VARCHAR(20),convert(date,mov_date),112) mov_date,customer_id2,contract_ref_no,cast(outstanding_vnd as float)sodu
+		       ,case when cast(day_princ_over as float)>cast(day_inter_over as float) then cast(day_princ_over as float)
+			           else cast(day_inter_over as float) end dpd
+				,contract_no,cast(lcy_contract_amount as float)lcy_contract_amount
+				,'CHOVAY' loai_tindung
+				,cast(amount_princ_over as float)+cast(amount_inter_over as float) as arrear_amt
+				,case when loan_group = 'NORM'  then '1'
+				      when loan_group = 'GR2'  then '2'
+					  when loan_group = 'GR3'  then '3'
+					  when loan_group = 'GR4'  then '4'
+					  when loan_group = 'GR5'  then '5'
+					  end loan_group,co_cau_no
+			   from (select t1.*
+			                ,t2.PRODUCT_CODE as ma_sp
+							,case when len(t1.customer_id)=4 then concat('100000',customer_id)
+							     when len(t1.customer_id)=5 then concat('10000',customer_id)
+								 when len(t1.customer_id)=6 then concat('1000',customer_id)
+								 when len(t1.customer_id)=7 then concat('100',customer_id)
+								 when len(t1.customer_id)=8 then concat('10',customer_id)
+								 when len(t1.customer_id)=9 then concat('1',customer_id)
+								 else t1.customer_id
+								 end customer_id2 
+			                from [dbo].[sktd_2020_2025] t1
+							 left join (select * from (
+													 select *,row_number()over(partition by EXT_REF_NO_1 order by PRODUCT_CODE asc)stt
+													   from (     select EXT_REF_NO_1,PRODUCT_CODE from [dbo].[ma_sp_ld_part1]
+																	where PRODUCT_CODE !='' and PRODUCT_CODE !='null'
+																  union 
+																  select EXT_REF_NO_1,PRODUCT_CODE from [dbo].[ma_sp_ld_part2]
+																	 where PRODUCT_CODE !='' and PRODUCT_CODE !='null'
+																  union 
+																  select contract_ref_no,sanphamchovay from [dbo].[ma_sp_ld_part3]
+																	 where sanphamchovay !='' and sanphamchovay !='null'
+														  )xxx
+												  )yyyy
+												  where stt=1
+										    ) t2
+									on t1.contract_ref_no=t2.EXT_REF_NO_1
+							 )xx---select * from[dbo].[sktd_2020_2025] where mucdichvay ='23NV'
+			   WHERE 1=1
+			   --and customer_id2 IS NOT NULL AND customer_id2 NOT IN ('null') 
+			   AND customer_type ='I'
+			  -- and ma_sp not in('7' ,'12','105.02','107','107.01','107.02','107.03'
+					--,'107.99','112','112.99','115.01','115.02','115.03','ICV0201','ICV0202'
+					--,'ICV0902','ICV1103')			   
+		union
+		select * from (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date,cif,visa_contract,cast(current_bal as float)sodu
+		           ,case when over_days ='null' then 0 else over_days end dpd
+				   ,visa_contract AS hanmuc,cast(credit_limit as float)credit_limit
+				   ,'CARD' loai_tindung
+				   ,case when overdue_bal ='null' then 0 else cast(overdue_bal as float) end arrear_amt
+				   ,loan_group,'null' co_cau_no
+					from [dbo].[visa_202509_202602] --select * from [dbo].[visa_202509_202602]
+					where current_bal not in ('null','0')
+					AND cif IS NOT NULL AND cif NOT IN ('null')
+					) x
+					where sodu <0
+		union
+		select * from (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date,cif,visa_contract,cast(current_bal as float)sodu
+		           ,case when over_days ='null' then 0 else over_days end dpd
+				   ,visa_contract AS hanmuc,cast(credit_limit as float)credit_limit
+				   ,'CARD' loai_tindung
+				   ,case when overdue_bal ='null' then 0 else cast(overdue_bal as float) end arrear_amt
+				   ,loan_group,'null' co_cau_no
+					from [dbo].[card_202603_04]---select * from [dbo].[card_202603_04]
+					where current_bal not in ('null','0')
+					AND cif IS NOT NULL AND cif NOT IN ('null')
+					) x
+					where sodu <0
+		union
+		select * from (
+		select report_date,CAST(customer_id AS VARCHAR(20))customer_id,contract_number
+		        ,cast(principal as float)sodu
+		         ,case when balance_type ='NORM' THEN 0
+				       WHEN balance_type ='GR5' THEN 361
+					   WHEN balance_type ='GR4' THEN 181
+					   WHEN balance_type ='GR3' THEN 91
+					   WHEN balance_type ='GR2' THEN 10
+					   END DPD
+				   ,contract_number AS hanmuc,cast(credit_limit as float)credit_limit
+				   ,'CARD' loai_tindung---select * from[dbo].[card_2020_2025] 
+				   ,case when interest is null then 0 else cast(interest as float) end arrear_amt
+				   ,case when balance_type ='NORM' THEN '1'
+				       WHEN balance_type ='GR5' THEN '2'
+					   WHEN balance_type ='GR4' THEN '3'
+					   WHEN balance_type ='GR3' THEN '4'
+					   WHEN balance_type ='GR2' THEN '5'
+					   END loan_group
+					,'null' co_cau_no
+				   from [dbo].[card_2020_2025] 
+				   WHERE customer_id IS NOT NULL 
+				   and customer_id NOT IN ('null') and balance_type not in ('CL')
+				   )x---SELECT * FROM [dbo].[card_2020_2025]
+				   where sodu <0
+   )
+, B AS (
+  select * from (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date
+					 ,CAST(customer AS VARCHAR(20))customer,CAST(account_id AS VARCHAR(20))account_id,cast(working_balance as float)sodu
+					 ,0 as dpd
+					 ,ma_los AS hanmuc,case when internal_amount ='null' then 0 else cast(internal_amount as float) end  credit_limit
+				     ,'THAUCHI' loai_tindung--select * from [dbo].[thauchi_202509_202602]
+					 ,0 as arrear_amt
+					 ,'1' nhomno,'null' co_cau_no
+					 from [dbo].[thauchi_202509_202602]--select max(CONVERT(VARCHAR(20),convert(date,txn_date),112)) from [dbo].[thauchi_202509_202602]
+					 where working_balance not in ('null','0') 
+					 AND customer IS NOT NULL AND customer NOT IN ('null')
+					 and khoi ='INDIV'
+					 )x
+					 where sodu<0
+		union
+  select * from (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date
+					 ,CAST(customer AS VARCHAR(20))customer,CAST(account_id AS VARCHAR(20))account_id,cast(working_balance as float)sodu
+					 ,0 as dpd
+					 ,ma_los AS hanmuc,case when internal_amount ='null' then 0 else cast(internal_amount as float) end  credit_limit
+				     ,'THAUCHI' loai_tindung--select * from [dbo].[thauchi_202509_202602]
+					 ,0 as arrear_amt
+					 ,'1' nhomno,'null' co_cau_no
+					 from [dbo].[thauchi_202603_04]--select max(CONVERT(VARCHAR(20),convert(date,txn_date),112)) from [dbo].[thauchi_202509_202602]
+					 where working_balance not in ('null','0') 
+					 AND customer IS NOT NULL AND customer NOT IN ('null')
+					 and khoi ='INDIV'
+					 )x
+					 where sodu<0
+		union
+  select * from (
+		select distinct report_date
+					,customer_id2,CAST(cust_ac_no AS VARCHAR(20))cust_ac_no
+					,cast(lcy_bal as float)sodu
+					,cast(ngayquahan as float)dpd
+					 ,NULL AS hanmuc,case when overall_limit is null then 0 else cast(overall_limit as float) end  credit_limit
+				     ,'THAUCHI' loai_tindung
+					 ,0 as arrear_amt
+					 ,case when loan_group = 'NORM'  then '1'
+				      when loan_group = 'GR2'  then '2'
+					  when loan_group = 'GR3'  then '3'
+					  when loan_group = 'GR4'  then '4'
+					  when loan_group = 'GR5'  then '5'
+					  end loan_group,'null' co_cau_no
+					from [dbo].[thauchi_2020_2025]---select * from [dbo].[thauchi_2020_2025]
+					where customer_type ='I'
+					--where lcy_bal not in ('null','0')
+					)x
+				where sodu <0
+					)
+, C AS (
+  select * from (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date,customer,ld_id
+		      ,cast(amount_lcy as float)sodu 
+			  ,case when songay_qhan_caonhat ='null' then 0 else songay_qhan_caonhat end dpd
+			  ,ma_cra,cast(amount_lcy as float)AS approve_amount
+			  ,'THAUCHI' loai_tindung
+			  ,pr+inte+pe+ps as arrear_amt
+			  ,asset_class,so_lan_co_cau
+			   from (select *
+			               ,case when overdue_pr_amount is null then 0 else cast(overdue_pr_amount as float) end pr
+			               ,case when overdue_in_amount is null then '0' else cast(overdue_in_amount as float) end inte
+						   ,case when overdue_pe_amount is null then 0 else cast(overdue_pe_amount as float) end pe
+						   ,case when overdue_ps_amount is null then 0 else  cast(overdue_ps_amount as float) end ps			   
+			        from [dbo].[thauchiquahan_202509_202602]--select * from [dbo].[thauchiquahan_202509_202602]
+					)x
+			   where amount_lcy not in ('null')
+			   and khoi ='INDIV'
+			   --AND customer IS NOT NULL AND customer NOT IN ('null')
+			   )x
+	union
+  select * from (
+		select distinct CONVERT(VARCHAR(20),convert(date,txn_date),112)txn_date,customer,ld_id
+		      ,cast(amount_lcy as float)sodu 
+			  ,case when songay_qhan_caonhat is null then 0 else songay_qhan_caonhat end dpd
+			  ,ma_cra,cast(amount_lcy as float)AS approve_amount
+			  ,'THAUCHI' loai_tindung
+			  ,pr+inte+pe+ps as arrear_amt
+			  ,asset_class,so_lan_co_cau
+			   from (select *
+			               ,case when overdue_pr_amount is null then 0 else cast(overdue_pr_amount as float) end pr
+			               ,case when overdue_in_amount is null then 0 else cast(overdue_in_amount as float) end inte
+						   ,case when overdue_pe_amount is null then 0 else cast(overdue_pe_amount as float) end pe
+						   ,case when overdue_ps_amount is null then 0 else  cast(overdue_ps_amount as float) end ps			   
+			        from [dbo].[thauchi_quahan_202603_04]--select * from [dbo].[thauchiquahan_202509_202602]
+					)x
+			   where amount_lcy not in ('null')
+			   and khoi ='INDIV'
+			   --AND customer IS NOT NULL AND customer NOT IN ('null')
+			   )x
+			--where sodu <0
+	   )
+select txn_Date as snapshot_date,customer as customer_id,ld_id,abs(sodu)total_ost,dpd
+         ,ma_cra
+		 ,case when approve_amount is null or approve_amount =0 or approve_amount <abs(sodu) then abs(sodu) else approve_amount end approve_amount
+		 ,loai_tindung
+		 ,abs(arrear_amt)arrear_amt
+		 ,asset_class,loai_co_cau
+     into #obs1 from (--drop table #obs1
+			SELECT * FROM A
+			UNION
+			SELECT * FROM B
+			UNION
+			SELECT * FROM C
+			)x
+------xác định các bản ghi thỏa mãn lần đầu tiên vỡ nợ
+select * from #obs1
+
+with tag_npl as (  
+  select *,ROW_NUMBER()over(partition by customer_id order by snapshot_date asc)stt
+       from (
+              select snapshot_date,customer_id
+			  ,sum(total_ost)total_ost
+		      ,max(dpd)max_dpd
+			  ,max(cast(asset_class as float))max_nhomno
+		       from #obs1
+			   group by snapshot_date,customer_id
+			   having (max(dpd)>=10 or max(cast(asset_class as float))>=2)
+			   )x            
+	)
+select * into #obs2----drop table #obs2
+    from tag_npl where stt =1
+
+---map lấy số thu
+with sothu as (
+	  select CONVERT(VARCHAR(20),convert(date,paid_date),112)paid_date
+			  ,case when len(customer_id)=4 then concat('100000',customer_id)
+							     when len(customer_id)=5 then concat('10000',customer_id)
+								 when len(customer_id)=6 then concat('1000',customer_id)
+								 when len(customer_id)=7 then concat('100',customer_id)
+								 when len(customer_id)=8 then concat('10',customer_id)
+								 when len(customer_id)=9 then concat('1',customer_id)
+								 else customer_id
+								 end customer_id
+			  ,sum(cast(lcy_inter_amount as float))thulai
+			  ,sum(cast(lcy_princ_amount as float))thugoc
+			   from [RRTD2].[dbo].[data_thuno_2019_202508]
+			 group by CONVERT(VARCHAR(20),convert(date,paid_date),112),customer_id
+	  union all
+			select cast(ngay_tra as varchar(50))ngay_tra,ma_kh
+			 ,sum(cast(thu_no_lai as float))thulai
+			 ,sum(cast(thu_no_goc as float))thugoc
+			from [RRTD2].[dbo].[data_thuno_202509_202512]
+			group by ngay_tra,ma_kh
+	  union all
+			  select cast(ngay_tra as varchar(50))ngay_tra,ma_kh
+			 ,sum(cast(thu_no_lai as float))thulai
+			 ,sum(cast(thu_no_goc as float))thugoc
+			from [RRTD2].[dbo].[data_thuno_202601_202605]
+			group by ngay_tra,ma_kh
+  )--select distinct substring(paid_date,1,4) from sothu
+,ghep_sothu as (
+    
+	 select t1.*,isnull(t2.tongthu,0)tongthu,isnull(t2.paid_date,'20261231')paid_date
+	     --,datediff(month,snapshot_date,paid_date) date_diff
+		 from (select * from #obs2)t1
+		 left join (select paid_date,customer_id,thulai+thugoc as tongthu from sothu) t2
+		 on t1.customer_id=t2.customer_id
+		 and t1.snapshot_date<t2.paid_date
+	
+	)
+select *
+       ,datediff(month,snapshot_date,paid_date) date_diff
+           into #ghep_sothu---drop table #ghep_sothu
+		   from ghep_sothu
+------xác định các bản ghi vỡ nợ lại
+
+with tag_npl as (  
+  select *,ROW_NUMBER()over(partition by customer_id order by snapshot_date asc)stt
+       from (
+              select snapshot_date,customer_id
+			  ,sum(total_ost)total_ost
+		      ,max(dpd)max_dpd
+			  ,max(cast(asset_class as float))max_nhomno
+		       from #obs1
+			   group by snapshot_date,customer_id
+			   having (max(dpd)>=10 or max(cast(asset_class as float))>=2)
+			   )x            
+	)
+,tag_secured as (  
+    select *,ROW_NUMBER()over(partition by customer_id order by snapshot_date asc)stt
+       from (
+              select snapshot_date,customer_id
+			  ,sum(total_ost)total_ost
+		      ,max(dpd)max_dpd
+			  ,max(cast(asset_class as float))max_nhomno
+		       from #obs1
+			   group by snapshot_date,customer_id
+			   having (max(dpd)=0 and max(cast(asset_class as float))=1)
+			   )x            
+	)
+,ngay_secured as (  
+	select t1.*
+		,t2.snapshot_date as next_secured_date
+		,row_number()over(partition by t1.snapshot_date,t1.customer_id order by t2.snapshot_date asc)stt_secured
+		,t2.total_ost as total_ost_secured
+			 from (select * from #obs2)t1
+			 left join (select * from tag_secured)t2
+			 on t1.customer_id=t2.customer_id
+			 and t1.snapshot_date<t2.snapshot_date
+	
+	)--select * from ngay_secured where stt_secured=1
+,ngay_vono_next as (
+ 	select t1.*
+		,t2.snapshot_date as next_npl_date
+		,row_number()over(partition by t1.snapshot_date,t1.customer_id,t1.next_secured_date order by t2.snapshot_date asc)stt_nplnext
+		,datediff(month,t1.next_secured_date,t2.snapshot_date)date_diff_secured
+			 from (select * from ngay_secured where stt_secured=1)t1
+			 left join (select * from tag_npl)t2
+			 on t1.customer_id=t2.customer_id
+			 and t1.next_secured_date<t2.snapshot_date
+      )
+select * into #obs_vono_lai---drop table #obs_vono_lai
+   from ngay_vono_next where stt_nplnext=1
+
+select * from #obs_vono_lai where date_diff_secured is not null
+-----------tính lgd
+--chốt thu trong 24 tháng
+with a as (
+             select *
+			    ,case when date_diff_secured>24 and date_diff_secured is not null then 'secured' else 'unsecured' end tag_secured
+			    from #obs_vono_lai
+	 )
+, b as (
+     select t1.*
+	  ,t2.tongthu,t2.paid_date,t2.date_diff as date_diff_thang_thu
+	  ,t2.tongthu/power((1+0.08),(t2.date_diff/12))tongthu_npv
+        from a t1
+        left join (select * from #ghep_sothu) t2----select * from #ghep_sothu where customer_id='1000039984'
+		on t1.customer_id=t2.customer_id
+		and t1.snapshot_date=t2.snapshot_date
+   )--select * from b
+,c as (   
+	select snapshot_date,customer_id,total_ost,total_ost_secured,tag_secured
+	       ,round(isnull(sum(case when date_diff_thang_thu <=24 then tongthu_npv end),0),2)sothu
+	   from b
+	   where tag_secured ='unsecured'
+	   group by snapshot_date,customer_id,total_ost,total_ost_secured,tag_secured
+
+	union all
+
+	select snapshot_date,customer_id,total_ost,total_ost_secured,tag_secured
+	       ,round(isnull(sum(case when paid_date<next_secured_date then tongthu_npv end),0),2)sothu
+	   from b
+	   where tag_secured ='secured'
+	   group by snapshot_date,customer_id,total_ost,total_ost_secured,tag_secured
+	)--select * from c
+,d as (
+    select *
+	   ,round(case when tag_secured ='unsecured' and total_ost<=sothu then 0
+	         when tag_secured ='unsecured' and total_ost>sothu then (total_ost-sothu)/total_ost
+	         when tag_secured ='secured' and total_ost<=(sothu+total_ost_secured) then 0
+			 when tag_secured ='secured' and total_ost>(sothu+total_ost_secured) then (total_ost-sothu-total_ost_secured)/total_ost
+			end,2) as lgd
+	   from c
+	   where total_ost>0
+      )
+select *
+       ,case when lgd >=0.9 then 1 else 0 end tag_gb
+	     into [RRTD2].[dbo].[obs_lgd]--select * from [RRTD2].[dbo].[obs_lgd]
+         from d
