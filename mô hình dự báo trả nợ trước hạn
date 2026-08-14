@@ -1,0 +1,572 @@
+
+
+
+
+
+
+
+
+
+Tài liệu:
+PHƯƠNG PHÁP LUẬN XÂY DỰNG VÀ VẬN HÀNH MÔ HÌNH PHI THAM SỐ TRẢ TRƯỚC HẠN KHOẢN VAY 
+
+
+
+
+
+
+
+
+
+
+ 
+Phiên bản tài liệu
+Phiên bản	Nội dung	Thực hiện	Ngày
+1.0	Dự thảo lần đầu	Lê Cảnh Cường	06/06/2024
+	Rà soát nội dung	Nguyễn Nhật Kim Trang	28/06/2024
+1.1	Bổ sung hiệu chỉnh	Lê Cảnh Cường	10/07/2024
+1.2	Bổ sung, hiệu chỉnh các ý kiến nghiệp vụ 	Phòng MRM, Phòng BSM	11/07/2024
+1.3	Hoàn thiện các góp ý	Lê Cảnh Cường	22/07/2024
+	Rà soát nội dung	Nguyễn Nhật Kim Trang	25/07/2024
+			
+			
+ 
+Mục lục
+A.	PHƯƠNG PHÁP LUẬN XÂY DỰNG MÔ HÌNH PHI THAM SỐ TIỀN VAY KHÁCH HÀNG (LOAN)	5
+I.	Tổng quan mô hình	5
+1.	Mục tiêu xây dựng mô hình	5
+2.	Các bước xây dựng mô hình	5
+2.1	Lưu đồ các bước xây dựng mô hình	5
+2.2	Diễn giải các bước xây dựng mô hình	6
+II.	Quy trình xây dựng mô hình	7
+1.	Xác định dữ liệu, phân khúc và các giả định	7
+1.1	Định nghĩa hành vi LOAN	7
+1.2	Xác định dữ liệu	7
+1.3	Lựa chọn tập quan sát và lập giả định mô hình	7
+2	Thực hiện triển khai dữ liệu	9
+3.	Xây dựng mô hình	10
+3.1 	Xác định nhóm hành vi theo tuổi cho cả tập STUDY và tập TEST	10
+3.2 	Xác định CPR cho cả tập STUDY và tập TEST	11
+3.3	Tỷ lệ duy trì của hành vi trả trước hạn và confidence cho tập STUDY và tập TEST	12
+4.	Kiểm tra hồi tố và hiệu chỉnh tỷ lệ duy trì	13
+4.1 	Kiểm tra hồi tố, đánh giá kết quả mô hình	13
+4.2	Hiệu chỉnh tỷ lệ duy trì	14
+III.	Kết quả mô hình phi tham số LOAN	20
+B.	QUY TRÌNH VẬN HÀNH MÔ HÌNH PHI THAM SỐ TRẢ TRƯỚC HẠN KHOẢN VAY	21
+I.	THỬ NGHIỆM MÔ HÌNH	21
+II.    VẬN HÀNH MÔ HÌNH	21
+
+ 
+Tài liệu tham khảo
+	Đơn vị tư vấn PwC, “Giao phẩm BC03.03.03: Phương pháp luận cho mô hình trả trước hạn khoản vay”, Dự án ALM, Tháng 03, 2021.
+
+Bảng các từ viết tắt
+STT	Từ viết tắt	Diễn giải
+1	LOAN	Khoản vay khách hàng
+2	XDMH	Xây dựng mô hình
+3	STUDY	Dữ liệu dùng cho Xây dựng mô hình
+4	TEST	Dữ liệu dùng cho Kiểm tra hồi tố
+5	Balance (Bal)	Số dư của tài khoản vay theo từng ngày trong vòng đời của tài khoản đó
+6	CPR	Conditional Repayment Rate: Tỷ lệ trả nợ trước hạn 
+7	Bucket	Thang/dải kỳ hạn
+8	BCF	Behavioural Cash Flow: Dòng tiền trả nợ căn cứ theo tỷ lệ trả trước /hành vi khách hàng
+9	CCF	Contractual Cash Flow: Dòng tiền trả nợ căn cứ theo hợp đồng/giấy tờ/lịch trả nợ 
+10	BSM	Phòng Quản lý Bảng cân đối, Khối Tài chính – Kế toán
+11	IRM	Phòng Quản trị Rủi ro tích hợp, Khối QTRR
+12	MRM	Phòng Quản trị Rủi ro thị trường, Khối QTRR
+
+ 
+	PHƯƠNG PHÁP LUẬN XÂY DỰNG MÔ HÌNH PHI THAM SỐ TIỀN VAY KHÁCH HÀNG (LOAN)
+	Tổng quan mô hình 
+	Mục tiêu xây dựng mô hình
+Mô hình LOAN dự báo tỷ lệ/số dư trả trước hạn tại các thời điểm trong vòng đời của khoản vay theo từng phân khúc dựa trên hành vi trả nợ của khách hàng diễn ra trước ngày trả nợ theo lịch/hợp đồng.
+	Các bước xây dựng mô hình
+	Lưu đồ các bước xây dựng mô hình 
+ 
+	Diễn giải các bước xây dựng mô hình 
+Các bước thực hiện	Nội dung chi tiết	Trách nhiệm	Kết quả đầu ra
+Bước 1: Xác định dữ liệu ban đầu 	1.1 Chuẩn bị yêu cầu dữ liệu	BSM	- Các bảng dữ liệu thô đầu vào dùng để XDMH
+	1.2 Thu thập dữ liệu thô theo yêu cầu Bước 1.1 từ hệ thống cơ sở dữ liệu của XXX	IRM	
+	1.3 Phối hợp kiểm tra/rà soát nhằm phát hiện vấn đề dữ liệu	IRM, BSM, MRM 	
+Bước 2: Giả định và triển khai dữ liệu		Mô tả nhu cầu nghiệp vụ
+	Lập các giả định ban đầu cho dữ liệu theo hiện trạng dữ liệu.
+	Phối hợp với IRM để phân tích các nhu cầu nghiệp vụ	BSM, MRM	- Các bảng dữ liêu đã được xử lý để sử dụng
+		Lựa chọn tập quan sát cho mô hình theo các điều kiện được mô tả
+	Thực hiện triển khai dữ liệu theo các giả định được thống nhất	IRM	
+Bước 3: Xây dựng mô hình 		Xây dựng mô hình dựa trên đặc tính của tập quan sát, dữ liệu đầu vào tại bước 2
+	Chỉnh sửa lỗi, code chạy mô hình nếu có phát sinh	IRM	- Tỷ lệ duy trì tại từng độ tuổi cho tập STUDY và tập TEST;
+- Giá trị khoảng tin cậy;
+- Các giá trị duy trì biên trên và biên dưới
+Bước 4: Kiểm tra hồi tố và hiệu chỉnh		Thực hiện kiểm tra hồi tố và phân tích kết quả hồi tố
+	Hiệu chỉnh mô hình dựa trên các nguyên tắc được quy định theo kết quả hồi tố	IRM	- Tỷ lệ CPR hiệu chỉnh 
+Bước 5: Tính toán phần ứng dụng của mô hình 		Căn cứ CPR hiệu chỉnh tại từng tuổi tương ứng với từng bucket, thực hiện tính toán BCF phân vào các bucket	
+IRM		BCF/CCF của các phân khúc thỏa mãn điều kiện XDMH
+		Nhận kết quả từ mô hình và đánh giá, áp dụng	BSM, MRM		Đánh giá, áp dụng kết quả đầu ra của phần ứng dụng của mô hình
+Bảng 1. Các bước xây dựng mô hình
+
+	Quy trình xây dựng mô hình
+	Xác định dữ liệu, phân khúc và các giả định
+	Định nghĩa hành vi LOAN
+Hành vi trả nợ trước hạn được xác định là các khoản thanh toán được khách hàng thực hiện trước ngày trả nợ theo lịch trả nợ/hợp đồng.
+	Xác định dữ liệu
+	Dữ liệu cho LOAN được lấy theo cấp độ số dư hàng ngày của từng tài khoản tiền vay, trong thời gian tối thiểu 5 năm gần nhất so với ngày bắt đầu xây dựng mô hình. 
+-	Dữ liệu XDMH được chia thành 02 bộ dữ liệu STUDY và TEST theo nguyên tắc sau:
+	STUDY: DATA[MIN(REP_DATE): MAX(REP_DATE)] * k
+	TEST: DATA[MIN(REP_DATE): MAX(REP_DATE)] * (1-k)
+Trong đó:
+	MIN(REP_DATE): ngày dữ liệu quan sát đầu tiên
+	MAX(REP_DATE): ngày dữ liệu quan sát cuối cùng
+	k: Phần trăm chia tập STUDY/TEST (khuyến nghị k=70%)
+Lưu ý:  XXX có thể cập nhật bộ dữ liệu STUDY và TEST cho tới thời điểm hiện tại và chạy lại các bước Xây dựng mô hình (Bảng 1) với bộ dữ liệu mới cập nhật.
+Dữ liệu được minh họa trong tài liệu này sẽ được chia thành 2 bộ dữ liệu:
+	Dữ liệu STUDY: bao gồm 4 năm đầu tiên của dữ liệu (từ 01/10/2015 – 30/09/2019);
+	Dữ liệu TEST: bao gồm năm cuối cùng của dữ liệu (từ 01/10/2019 – 30/09/2020), được sử dụng để kiểm tra hồi tố và hiệu chỉnh mô hình.
+	Lựa chọn tập quan sát và lập giả định mô hình
+	Lựa chọn tập quan sát
+Mô hình hành vi cho sản phẩm LOAN được lựa chọn theo tiêu chí và nguyên tắc sau:
+	Tập quan sát đó chiếm từ 5% số dư tổng danh mục trở lên của sản phẩm tương ứng 
+	Nếu thỏa mãn tiêu chí 1, cần cân nhắc đến số lượng tài khoản của tập quan sát đó. Cụ thể, nếu tập quan sát có dưới 10 tài khoản, XXX không cần thiết phải xây dựng mô hình hành vi, thay vào đó có thể quản lý riêng;
+Ví dụ: Dựa trên các tiêu chí và nguyên tắc trên, mô hình Cho vay có kết quả tập quan sát như sau:
+ (dữ liệu tại ngày 30/09/2020 của bộ dữ liệu – 30/09/2020):
+
+Đơn vị tiền tệ	Khối khách hàng	Kỳ hạn	Loại lãi suất	% Tổng danh mục	Số lượng tài khoản
+VND	CN	20 năm	Thả nổi	9.61%	3,655
+VND	SME	6 tháng	Thả nổi	7.48%	6,218
+VND	CN	10 năm	Thả nổi	5.14%	5,626
+
+
+
+
+
+
+
+
+
+
+	
+Ngoài ra, yêu cầu dữ liệu hiện tại đã có các tiêu chí phân khúc tham khảo khác, như:
+	Nhóm ngành nghề khách hàng, Loại tài khoản /Mục đích sử dụng tài khoản
+	Nhóm tuổi khách hàng, Khu vực, vùng miền
+	Thời gian quan hệ với ngân hàng
+(*) Tiêu chí bắt buộc phải có trong mô hình hành vi cho Cho vay
+	Xây dựng các giả định
+Mô hình được xây dựng với những giả định cơ bản sau:
+Giả định	Nội dung
+Các ngày bị thiếu	Dữ liệu vào ngày Chủ nhật và các ngày nghỉ lễ không được lưu lại sẽ được điền theo ngày có dữ liệu gần nhất trước nó.
+Cách xác định trường dữ liệu Biz_line	Trường dữ liệu Biz_line thay đổi theo thời gian, mô hình sẽ lựa chọn giá trị Biz_line theo phân khúc gốc ban đầu. Những trường hợp có trường dữ liệu Biz_line không tồn tại sẽ được lược bỏ khỏi mô hình.
+Loại bỏ các tài khoản có tổng dòng tiền trả nợ gốc của các dòng lịch trong tương lai không khớp với tổng dư nợ hiện tại của khoản vay	Đảm bảo tổng dòng tiền trả nợ gốc của các dòng lịch trong tương lai phải khớp với tổng dư nợ hiện tại của từng tài khoản
+Tính liên tục dữ liệu  	Để đảm bảo tính liên tục, dữ liệu thô sử dụng cho mô hình sẽ bao gồm các khoản vay trong hạn và các khoản vay quá hạn với thời gian nhảy quá hạn dưới 10 ngày. 
+Việc xác định khoản vay trong hạn/ quá hạn được thực hiện dựa trên mã tài khoản GL hạch toán của kế toán.
+Xác định số dư trả nợ trước hạn khoản vay 	Chỉ nghiên cứu hành vi trả nợ trước hạn của khoản vay trong thời gian của bộ dữ liệu, đối với thời gian của khoản vay nằm ngoài thời gian của bộ dữ liệu mô hình nghiên cứu thì không xác định số dư trả trước hạn tương ứng theo tuổi của từng khoản vay do không đủ cơ sở dữ liệu và tính chất phức tạp của dữ liệu
+
+
+
+
+
+	Thực hiện triển khai dữ liệu
+2.1 	Tổng quan các bước thực hiện
+Để có dữ liệu đầu vào cho mô hình, dữ liệu thô sẽ triển khai theo thứ tự các bước như sau:
+BƯỚC	NỘI DUNG	LƯU Ý
+1	Cố định tài khoản vay theo thông tin tại ngày đầu tiên quan sát được	Thực hiện chung cho tất cả các phân khúc của mô hình cho vay, và chỉ thực hiện khi xây dựng lại mô hình trên bộ dữ liệu mới cập nhật
+2	Nhóm các tài khoản theo các tiêu chí quan sát	Các tài khoản được nhóm theo các tiêu chí quan sát đã xác định, do đó các bước tiếp theo sẽ được thực hiện cho các tài khoản thuộc cùng một tập quan sát (ví dụ đơn vị tiền tệ, khối kinh doanh, kỳ hạn, sản phẩm)
+3	Tính tuổi của tài khoản	Không có
+4	Xác định các khoản trả trước hạn	Không có
+2.2 	Chi tiết thực hiện
+Bước 1: Cố định tài khoản vay theo thông tin tại ngày đầu tiên quan sát được
+Các tài khoản được lấy thông tin theo thông tin tại ngày quan sát đầu tiên của từng tài khoản trong bộ dữ liệu được cung cấp
+Ví dụ 1: Có 1 tài khoản trong danh mục có 4 quan sát theo thời gian như sau
+REPORTING
+DATE	ACCOUNT	CUSTOMER_ID	BUSINESS
+LINE	CUR	TENOR	PRODUCT	OPEN_DATE
+28/01/2016	1111WES	1234	KHCN	VND	5Y	Mua nhà	31/01/2011
+29/01/2016	1111WES	1234	KHCN	VND	5Y	Mua nhà	31/01/2011
+30/01/2016	1111WES	1234	KHCN	VND	5Y	Mua nhà	31/01/2011
+31/01/2016	1111WES	1234	KHCN	VND	5Y	Kinh doanh	31/01/2011
+Khi đó, tài khoản vay này chỉ lấy thông tin theo ngày đầu tiên là 28/01/2016, và thuộc sản phẩm là vay với mục đích mua nhà.
+Bước 2: Nhóm tài khoản theo tiêu chí quan sát Các tài khoản sau khi được cố định thông tin ở bước 1, sẽ được nhóm vào một tập quan sát theo các tiêu chí được xác định ở mục II -1.3a. 
+Bước 3 Tính tuổi của tài khoản, tỷ lệ trả trước
+Lấy dữ liệu ngày mở tài khoản (Open_date) từ “bảng thông tin tài khoản”
+Tuổi của mỗi khoản tài khoản a tại ngày t được tính trên dữ liệu rút gọn:
+〖"age" 〗_"a,t"  "= " 〖"reporting_date" 〗_"a,t"  "- " 〖"Open_date" 〗_"a" 
+Trong đó:
+	age_(a,t) là tuổi tài khoản a tại ngày t
+	〖"reporting_date" 〗_"a,t"  là ngày báo cáo t
+	〖Open_date〗_(a,t) là ngày mở tài khoản a
+Ví dụ 2: 1 tài khoản được mở từ ngày 31/12/2013, tuổi của 1 tài khoản được tính như sau:
+Reporting date	ACCOUNT	OPEN_DATE	AGE
+01/01/2014	999999WES123	31/12/2013	1
+02/01/2014	999999WES123	31/12/2013	2
+03/01/2014	999999WES123	31/12/2013	3
+04/01/2014	999999WES123	31/12/2013	4
+Lưu ý: Tại từng thời điểm t (hay ngày t) sẽ có nhiều tuổi khác nhau trong danh mục (vì OPEN_DATE của từng tài khoản khác nhau). Mô hình được xây dựng dựa trên cơ sở là tuổi T thay vì ngày/thời điểm t. Các tài khoản tại từng tuổi T bằng nhau sẽ được nhóm lại với nhau để lấy tổng số dư khi tính toán.
+Bước 4: Xác định các khoản trả trước hạn 
+Dựa trên hệ thống dữ liệu của Ngân hàng, hành vi trả nợ được xác định như sau:
+Ngày trả nợ thực tế với Loại nợ trả (PAYMENT_TYPE) là: 
+	Tất toán trước hạn (TAT_TOAN_TRUOC_HAN)  
+	Trả một phần gốc trước hạn (TRA_MOT_PHAN_GOC_TRUOC_HAN)
+Ví dụ 3:
+Reporting date	ACCOUNT	ACTUAL PAYMENT	PAYMENT TYPE
+04/01/2014	999999WES123	50	TAT_TOAN_TRUOC_HAN
+Bản ghi của tài khoản vay 999999WES123 tại ngày 04/01/2014 có ghi nhận khoản trả nợ là 50 với loại trả nợ là tất toán trước hạn (TAT_TOAN_TRUOC_HAN).
+Do đó, bản ghi này được xác định là hành vi trả nợ trước hạn của tài khoản 999999WES123.
+	Xây dựng mô hình 
+3.1 	Xác định nhóm hành vi theo tuổi cho cả tập STUDY và tập TEST
+Sau khi xác định tuổi tại từng thời điểm t của từng tài khoản, xác định và nhóm hành vi trả trước hạn theo tuổi của tất cả các tài khoản của phân phúc:
+Total_prepayment_T= ∑▒Prepayment_T 
+Với:
+	Prepayment_T : Lượng trả trước của phân khúc tại tuổi T từ 2/10/2015 đến 30/09/2019 đối với tập STUDY và 02/10/2019 đến 30/09/2020 với tập TEST.
+	〖Total_prepayment〗_T : Tổng lượng trả trước tại tuổi T từ 2/10/2015 đến 30/09/2019 đối với tập STUDY và 02/10/2019 đến 30/09/2020 với tập TEST.
+Lưu ý: Hành vi Prepayment chỉ có thể quan sát từ ngày 02/10/2015 trở đi vì đối với hành vi Prepayment tại ngày 01/10/2015, sẽ không có quan sát cho số dư trước khi có hành vi Prepayment này (tức là số dư khoản vay tại 30/09/2015). 
+Ví dụ: Trong một phân khúc quan sát từ 01/01/2016 đến 03/01/2016 có những tài khoản với độ tuổi như sau:
+Reporting date	Age	ACCOUNT	Bal	PRE
+PAYMENT		Age	Bal	PRE
+PAYMENT
+01/01/2016	31	000111WES123	100	0		31	300	0
+01/01/2016	31	000333WES456	200	0	
+32	285	15
+02/01/2016	32	000111WES123	90	10		33	255	30
+02/01/2016	32	000333WES456	195	5				
+03/01/2016	33	000111WES123	75	15				
+03/01/2016	33	000333WES456	180	15				
+	
+3.2 	Xác định CPR cho cả tập STUDY và tập TEST
+Tỷ lệ trả nợ trước hạn ở tuổi t được xác định dựa trên tổng lượng trả trước hạn tại tuổi T và số dư của tổng phân khúc tại tuổi T-1 trong khoảng thời gian từ 2/10/2015 đến 30/09/2019 đối với tập STUDY và 02/10/2019 đến 30/09/2020 với tập TEST.
+CPR_T=  (Total_prepayment_T)/Outstanding principal_(T-1) 
+Với:
+	CPR_T : Tỷ lệ trả nợ trước hạn của phân khúc tại tuổi T 
+	〖Total_prepayment〗_T : Tổng lượng trả trước của phân khúc tại tuổi T được tính ở điểm 3.1
+	Outstanding principal_(T-1): Số dư của tổng phân khúc tại tuổi T-1
+Ví dụ mẫu về tính toán Tỷ lệ duy trì và CPR cho một phân khúc mô hình 
+Tuổi	Tổng trả trước hạn  tuổi T	Số dư tại tuổi T-1	CPR
+1	5,986,321,627	10,597,446,587,173	0.0005649
+2	581,360,035	10,574,971,883,342	0.0000550
+3	1,097,690,043	10,561,920,382,395	0.0001039
+4	293,266,334	10,550,381,777,981	0.0000278
+5	9,448,839,727	10,549,102,133,647	0.0008957
+
+
+
+
+
+	Tỷ lệ duy trì của hành vi trả trước hạn và confidence cho tập STUDY và tập TEST
+	Xác định tỷ lệ duy trì (survival_rate) tại từng tuổi
+Tỷ lệ của hành vi trả trước hạn được tính như sau
+〖"Survival rate" 〗_T " = 1 - " CPR_T  
+	Xác định khoảng tin cậy cho hành vi trả nợ trước hạn
+Xác định khoảng tin cậy cho tỷ lệ duy trì tại từng tuổi theo phương pháp Greenwood
+Confidence_T=- z_((1-c)/2)  *Survival rate_T  *√(∑_(i:i ≤T)▒prepayment_i/(〖Outstanding principal〗_(i-1)*(〖Outstanding principal〗_(i-1)  - prepayment_T)))
+Trong đó:
+	〖Confidence〗_T: khoảng tin cậy tại tuổi T
+	Prepayment_i: Lượng trả trước của phân khúc tại tuổi T được tính ở điểm 3.1
+	Outstanding principal_(T-1): Số dư của tổng phân khúc tại tuổi T-1
+	c là độ tin cậy (khuyến nghị lấy 99% hoặc tùy theo khẩu vị rủi ro và các chính sách quy định trong từng thời kỳ nhưng không thấp hơn 90%)
+	z_((1-c)/2)  là Z-Score của xác xuất (1-c)/2
+	Xác định tỷ lệ duy trì biên trên và dưới trong khoảng tin cậy
+Upper_T= Survival rate_T+ Confidence_T
+Lower_T= Survival rate_T- Confidence_T
+Trong đó:
+	〖"Survival rate" 〗_T: tỷ lệ duy trì tại tuổi T
+	Confidence_T : khoảng tin cậy của tỷ lệ duy trì tại tuổi T
+	Upper_T : tỷ lệ duy trì cận trên tại tuổi T
+	Lower_T: tỷ lệ duy trì cận dưới tại tuổi T
+Trong phương pháp luận này, tại các tuổi không có dữ liệu, giả định là tỷ lệ duy trì và các biên không thay đổi, thực hiện điền các tuổi đó theo dữ liệu của tuổi trước.
+Ví dụ:
+	Kết quả tính từ tập dữ liệu study 
+Age	Svv_rate_study	Confidence	Svv_rate_up_study	Svv_rate_low_study	CPR.study
+	(a)	(b)	(c)=(a)+(b)	(d)=(a)-(b)	
+1	99.93221738%	0.00000255%	99.93221994%	99.93221483%	0.06778262%
+2	99.99976908%	0.00000256%	99.99977164%	99.99976652%	0.00023092%
+3	99.99207607%	0.00000270%	99.99207878%	99.99207337%	0.00792393%
+4	99.81209147%	0.00000503%	99.81209650%	99.81208645%	0.18790853%
+5	99.98609080%	0.00000517%	99.98609597%	99.98608563%	0.01390920%
+6	99.93718646%	0.00000572%	99.93719218%	99.93718074%	0.06281354%
+7	99.93805705%	0.00000622%	99.93806327%	99.93805083%	0.06194295%
+8	99.94237250%	0.00000665%	99.94237915%	99.94236585%	0.05762750%
+9	99.97195490%	0.00000685%	99.97196175%	99.97194805%	0.02804510%
+10	99.99273457%	0.00000691%	99.99274147%	99.99272766%	0.00726543%
+
+	Kết quả tính từ tập dữ liệu TEST
+Age	Svv_rate_test	Confidence	Svv_rate_up _test	Svv_rate_low_test	CPR.test
+	(a)	(b)	(c)=(a)+(b)	(d)=(a)-(b)	
+1	100%	0.00000000%	100%	100%	0%
+2	100%	0.00000000%	100%	100%	0%
+3	99.89609907%	0.00000470%	99.89610377%	99.89609437%	0.10390093%
+4	99.99966552%	0.00000471%	99.99967023%	99.99966081%	0.00033448%
+5	99.68570994%	0.00000942%	99.68571936%	99.68570052%	0.31429006%
+6	99.95598664%	0.00000993%	99.95599657%	99.95597671%	0.04401336%
+7	99.98681574%	0.00001007%	99.98682581%	99.98680566%	0.01318426%
+8	99.99991476%	0.00001007%	99.99992484%	99.99990469%	0.00008524%
+9	100%	0.00001007%	100.00001007%	99.99998993%	 0%
+10	99.99321831%	0.00001015%	99.99322846%	99.99320816%	0.00678169%
+	Kiểm tra hồi tố và hiệu chỉnh tỷ lệ duy trì 
+4.1 	Kiểm tra hồi tố, đánh giá kết quả mô hình
+Đánh giá kết quả mô hình trả trước hạn:
+	Trong quá trình tính toán tỷ lệ duy trì và khoảng tin cậy cho 2 bộ STUDY và bộ Test, mô hình sẽ cho ra kết quả CPRhiệu chỉnh tại từng tuổi.  
+	Kết quả CPR càng cao sẽ cho ra tỷ lệ duy trì càng thấp. Để đảm bảo tính cẩn trọng của mô hình, theo tính chất của dòng tiền vào (khách hàng có hành vi trả trước càng nhiều thì càng tốt), kết quả CPR của bộ STUDY sẽ phải thấp hơn của bộ TEST, do đó tỷ lệ duy trì của bộ (a) sẽ phải cao hơn bộ (b). Do đó, kết quả mô hình được xem là không đạt khi cả tỷ lệ duy trì cận trên và dưới của bộ (b) đều cao hơn cả 2 tỷ lệ tương ứng của bộ (a). Điều này xảy ra khi Lower_T (b) > Upper_T (a)  Thực hiện hiệu chỉnh lấy CPR thấp nhất giữa Tập STUDY và Tập TEST.
+Do đó, kết quả mô hình là “đạt” khi thỏa mãn điều kiện:
+〖Test_Lower〗_T  ≤ Study_Upper_T 
+
+
+
+
+
+
+Dưới đây là hình ảnh minh họa cho các trường hợp có thể xảy ra của 2 bộ đường cong duy trì của kết quả tập STUDY (nét liền) và tập TEST (nét đứt).
+ 
+〖"Lower_test" 〗_"T" ≤〖" Upper_study" 〗_"T"  => ĐẠT	 
+〖"Lower_test" 〗_"T" ≤〖" Upper_study" 〗_"T"  => ĐẠT
+ 
+〖"Lower_test" 〗_"T" ≤〖" Upper_study" 〗_"T"  => ĐẠT	 〖"Lower_test" 〗_"T" ≤〖" Upper_study" 〗_"T"  => ĐẠT
+ 
+〖"Lower_test" 〗_"T" ≥〖" Upper_study" 〗_"T"  => KHÔNG ĐẠT	 
+〖"Lower_test" 〗_"T" ≤〖" Upper_study" 〗_"T"  => ĐẠT
+
+4.2	Hiệu chỉnh tỷ lệ duy trì
+Mục đích của hiệu chỉnh nhằm đảm bảo tính cẩn trọng của kết quả mô hình theo dữ liệu cập nhật nhất.
+Trong trường hợp tại tuổi nhất định mà mô hình không đạt kiểm tra hồi tố ở bước trước đó, kết quả CPR tại tuổi đó sẽ được lấy theo CPR của tập TEST. 
+Xác định tỷ lệ giảm số dư theo tuổi hiệu chỉnh (CPRhiệu chỉnh)
+Bộ CPRhiệu chỉnh cuối cùng sau khi hiệu chỉnh sẽ là kết quả của mô hình, cụ thể hóa bằng công thức sau:
+〖"CPR" 〗_"hiệu chỉnh_T" = 〖"CPR" 〗_"study_T" *BACKTEST+ 〖"CPR" 〗_"test_T" *(1-BACKTEST)
+Trong đó:
+BACKTEST = {■("1 nếu kết quả là \"ĐẠT\""@"0 nếu kết quả \"KHÔNG ĐẠT\"" )┤
+〖"CPR" 〗_"study_T" , 〖"CPR" 〗_"test_T"  : đã tính ở phần A mục II khoản 3.2
+ 
+Ví dụ tính toán kết quả CPR sau khi hiệu chỉnh:
+Age	Svv_rate_
+study	Svv_rate_
+upper	CPR.
+study	Svv_rate test	Svv_rate_
+lower test	CPR.
+test	Backtest	CPR_
+hiệu chỉnh
+1	99.93221738%	99.93221994%	0.06778262%	100%	100%	0%	FALSE	0%
+2	99.99976908%	99.99977164%	0.00023092%	100%	100%	0%	FALSE	0%
+3	99.99207607%	99.99207878%	0.00792393%	99.89609907%	99.89609437%	0.10390093%	TRUE	0.00792393%
+4	99.81209147%	99.81209650%	0.18790853%	99.99966552%	99.99966081%	0.00033448%	FALSE	0.00033448%
+5	99.98609080%	99.98609597%	0.01390920%	99.68570994%	99.68570052%	0.31429006%	TRUE	0.01390920%
+6	99.93718646%	99.93719218%	0.06281354%	99.95598664%	99.95597671%	0.04401336%	FALSE	0.04401336%
+7	99.93805705%	99.93806327%	0.06194295%	99.98681574%	99.98680566%	0.01318426%	FALSE	0.01318426%
+8	99.94237250%	99.94237915%	0.05762750%	99.99991476%	99.99990469%	0.00008524%	FALSE	0.00008524%
+9	99.97195490%	99.97196175%	0.02804510%	100%	99.99998993%	0%	FALSE	0%
+10	99.99273457%	99.99274147%	0.00726543%	99.99321831%	99.99320816%	0.00678169%	FALSE	0.00678169%
+
+
+
+
+
+
+
+ 
+	Áp dụng kết quả mô hình trong thực tiễn
+Từ kết quả của mô hình, XXX có thể điều chỉnh được dòng tiền có hành vi được mô tả theo nguyên tắc sau:
+	Tại mỗi khoản vay sẽ có các ngày trả nợ theo lịch khác nhau tương ứng với các tuổi (tương lai) với các khoản vay đó => Dòng tiền theo hợp đồng có tuổi khác nhau sẽ áp dụng CPR khác nhau (là CPR hiệu chỉnh cuối cùng) tương ứng với từng độ tuổi => Tính được dòng tiền trả trước hạn
+	Số dư nợ còn lại của mỗi khoản vay sẽ được điều chỉnh (giảm) tại các ngày trả nợ theo lịch và các thời điểm trả trước hạn 
+	BCF của bucket i = CCF tại bucket i + Dòng tiền trả trước hạn (dòng tiền tại bucket cuối cùng là dòng tiền còn lại sau khi đã tính dòng tiền trả theo lịch và trả trước hạn của những bucket trước đó)
+	Tổng CCF của tất cả các bucket = Tổng BCF của tất cả các bucket trong mọi trường hợp
+Kết quả mô hình LOAN được áp dùng nhằm xác định dòng tiền sau điều chỉnh hành vi để đánh giá khe hở thanh khoản so với dòng tiền trước điều chỉnh hành vi (khi chưa áp dụng mô hình hành vi). Từ kết quả của mô hình, XXX có thể điều chỉnh được dòng tiền có hành vi được mô tả theo nguyên tắc sau:
+	Xác đinh ngày trả nợ theo lịch
+Dòng tiền trả nợ căn cứ theo hợp đồng/giấy tờ là dòng tiền theo hợp đồng của từng khoản vay, được xác định dựa trên lịch trả nợ (đến kỳ đáo hạn) của khoản vay đó
+Ví dụ
+Tại ngày báo cáo 31/12/2019, ở khoản vay “LD1717300005” (ngày mở hợp đồng 22/06/2017), có số tiền giải ngân ban đầu là 1,000,000 với dư nợ hiện tại là 3,000 có lịch trả nợ trong tương lai như sau
+Ngày trả nợ theo lịch	Ngày báo cáo	Ngày mở hợp đồng	Thời gian đến hạn	Tuổi khoản vay đến hạn
+A	B	C	D=A-B	E=A-C
+22/10/2020	30/09/2020	22/6/2017	22	1218
+14/06/2033	30/09/2020	22/6/2017	4640	5836
+23/06/2037	30/09/2020	22/6/2017	6110	7306
+Căn cứ các ngày trả nợ theo lịch sẽ xác định được thời gian đến hạn của từng dòng tiền trong tương lai của khoản vay này
+	Thời gian đến hạn = Ngày trả nợ theo lịch – Ngày báo cáo	
+Đồng thời xác định được tuổi của khoản vay đó tại những thời điểm đến hạn trong tương lai, bắt đầu từ tuổi hiện tại ở ngày báo cáo
+	Tuổi khoản vay đến hạn = Ngày trả nợ theo lịch – Ngày mở hợp đồng 	
+
+	Xác đinh CCF/BCF
+Nguyên tắc này được thể hiện cụ thể các bước bên dưới.
+Bước 1: Căn cứ từng độ tuổi, khoản vay và CPRhiệu chỉnh ở tuổi t tại phần A mục II khoản 4.2, xác định lần lượt
+1. Dòng tiền trả trước hạn tại độ tuổi T:
+Dòng tiền trả trước hạn (T) = Dư nợ (T-1) * CPRhiệu chỉnh (T)
+2. Dòng tiền điều chỉnh sau hành vi
+BCF (T) = Dòng tiền trước điều chỉnh hành vi (T) + Dòng tiền trả trước hạn (T)
+Ví dụ 1: 
+Ở khoản vay “LD1717300005” tuổi của khoản vay bắt đầu từ thời điểm áp dụng mô hình là 1196, có số dư là 4,606,237,000 và thời gian đến hạn cuối cùng của khoản vay này là 6110, do đó sẽ lấy kết quả tỷ lệ trả trước hạn theo mô hình (CPR) từ tuổi 1197 trở đi cho khoản vay này (tuổi 1196 chưa có hành vi trả nợ). Khoản vay này sẽ kết thúc tại tuổi 7306 (1196+6110) 
+Age	Thời điểm 
+đến hạn	CPR hiệu chỉnh 	Dư nợ thời điểm hiện tại	CCF 	Dòng tiền trả trước hạn 	BCF 	Dư nợ sau điều chỉnh hành vi 
+		A (mục 4.2)	B	C	D =BT-1*AT	E = CT+DT	FT= BT-1-E 
+1196	0	0%	4,606,237,000	0	-	-	0
+1197	1	0%	0	0	3,858,165	3,858,165	4,602,378,835
+  1198	2	0.00053451%	0	0	24,600	24,600	4,602,354,235
+1199	3	0%	0	0	0	0	4,602,354,235
+1200	4	0%	0	0	0	0	4,602,354,235
+1201	5	0%	0	0	0	0	4,602,354,235
+1202	6	0%	0	0	0	0	4,602,354,235
+1203	7	0%	0	0	0	0	4,602,354,235
+…
+7031	5835	0%	0	0	0	0	10,032,832
+7032(*)	  5836	0%	0	22,917,000	0	10,032,832	0
+…
+7305	6109	0 %	0	0	0	0	0
+7306	6110	0 %	0	22,837,000	0	0	0
+(*) Tại thời điểm tuổi là 7031, do dư nợ còn lại sau điều chỉnh hành vi là 10,032,832 nên dòng tiền trả theo CCF tại tuổi 7032 tối đa chỉ là 10,032,832 và dư nợ sau điều chỉnh kết thúc tại tuổi này.
+
+
+
+
+Ví dụ 2: 
+Tương tụ ở khoản vay “LD1933723421” tuổi của khoản vay bắt đầu từ thời điểm áp dụng mô hình là 302, có số dư là 3,255,946,497 và thời gian đến hạn cuối cùng của khoản vay này là 26, do đó sẽ lấy kết quả tỷ lệ trả trước hạn theo mô hình (CPR) từ tuổi 303 trở đi cho khoản vay này (tuổi 302 chưa có hành vi trả nợ). Khoản vay này sẽ kết thúc tại tuổi 328 (302+26) 
+
+Age	Thời điểm 
+đến hạn	CPR hiệu chỉnh 	Dư nợ thời điểm hiện tại 	CCF 	Dòng tiền trả trước hạn 	BCF 	Dư nợ sau điều chỉnh hành vi 
+		A (mục 4.2)	B	C	D =BT-1*AT	E = CT+DT	FT= BT-1-E 
+302	0	0.04960164%	3,255,946,497	0	0	0	0
+303	1	0.00191860%	0	0	62,469	62,469	3,255,884,028
+304	2	0.02092178%	0	0	681,189	681,189	3,255,202,840
+305	3	0.00000000%	0	4,004,146	0	4,004,146	3,251,198,694
+306	4	0.03184563%	0	0	1,035,365	1,035,365	3,250,163,329
+307	5	0.06148697%	0	0	1,998,427	1,998,427	3,248,164,902
+308	6	0%	0	0	0	0	3,248,164,902
+309	7	0.02393362%	0	0	777,403.5	777,403	3,247,387,498
+…
+326	24	0%	0	0	0	0	3,227,733,911
+327	25	0.02659932%	0	0	858,555	858,555	3,226,875,356
+328(*)	26	0.04445310%	0	3,251,942,351	0	3,226,875,356	0
+(*) Tương tự tại thời điểm tuổi là 327, do dư nợ còn lại sau điều chỉnh hành vi là 3,226,875,356 nên dòng tiền trả theo CCF tại tuổi 328 tối đa chỉ là 3,226,875,356 và dư nợ sau điều chỉnh kết thúc tại tuổi này
+Bước 2: Tính toán dòng tiền hành vi tại từng khoản vay tương ứng với từng bucket
+Các Bucket B(i,j] và số ngày tương ứng bk là các dải kì hạn được định nghĩa như sau:
+Dải kì hạn	1 ngày	2 – 7
+ ngày	8-30 
+ngày	31-90 ngày	91-180
+ngày	181-365
+ngày	>365 ngày
+	B[1]	B[2,7]	B[8,30]	B[31,90]	B[91,180]	B[181,365]	B[>365]
+Số ngày tương ứng của từng bucket	1	7	30	90	180	365	>365
+	b1	b2	b3	b4	b5	b6	b7
+Lưu ý: i và j có thể thay đổi theo nhu cầu thực tế và mục đích áp dụng mô hình và không bị giới hạn bởi bảng trên
+
+
+
+Tính CCF tại từng bucket
+Dòng tiền trả nợ đúng hạn: là những dòng tiền rơi vào đúng ngày trả nợ theo lịch tại thời điểm đến hạn từng bucket tương ứng
+	Tính CCF tại khung kỳ hạn qua đêm (B[1])
+〖"CCF" 〗_"B[1]"  "= Sum(Số tiền trả nợ theo lịch tại thời điểm đến hạn  = 1)" 
+	Tính CCF trong trường hợp các bucket còn lại:
+〖"CCF " 〗_"B[i,j]"  "= Sum(Số tiền trả nợ theo lịch tại thời điểm đến hạn từ ngày i đến ngày j)" 
+
+Trong đó:
+	B[i,j] là các bucket được định nghĩa như trên.
+	i, j là các ngày cận dưới và cận trên của các dải kỳ hạn trong 1 bucket.
+Tính BCF tại từng bucket
+Dòng tiền trả nợ trước hạn: là tổng dòng tiền có ngày trả nợ theo lịch tại thời điểm đến hạn từng bucket tương ứng.
+	Tính BCF tại khung kỳ hạn qua đêm (B[1])
+〖"BCF " 〗_(B[1]) " = Sum( Số tiền trả nợ theo BCF tại thời điểm đến hạn  = 1)" 
+	Tính BCF trong trường hợp các bucket còn lại:
+	〖"BCF " 〗_"B[i,j]"  "= Sum(Số tiền trả nợ theo BCF tại thời điểm đến hạn từ ngày i đến ngày j)" 
+Trong đó:
+	B[i,j] là các bucket được định nghĩa như trên.
+	i, j là các ngày cận dưới và cận trên của các dải kỳ hạn trong 1 bucket.
+Tại ví dụ 1: Căn cứ theo CCF và BCF tương đương với từng bucket đối với khoản vay “LD1717300005”
+Bucket	1 ngày	2 – 7 ngày	8-30 
+ngày	31-90 ngày	91-180
+ngày	181-365
+ngày	>365 ngày
+CCF	0	0	22,917,000	45,834,000	68,751,000	137,502,000	4,331,233,000
+BCF	3,858,165	24,600	63,004,318	62,479,456	137,938,703	200,055,822	4,138,875,935
+Tại ví dụ 2: Căn cứ theo CCF và BCF tương đương với từng bucket đối với khoản vay “LD1933723421”
+Bucket	1 ngày	2 – 7 ngày	8-30 
+ngày	31-90 ngày	91-180
+ngày	181-365
+ngày	>365 ngày
+CCF	0	4,004,146	3,251,942,351	0	0	0	0
+BCF	62,469	8,496,530	3,247,387,498	0	0	0	0
+	BCF Bucket [1 ngày] = BCF với thời điểm đến hạn = [1] = 62,469
+	BCF Bucket [2 – 7 ngày] = BCF với thời điểm đến hạn = [2,..,7]
+= 681,189+4,004,146+1,035,365+1,035,365+1,998,427+777,403= 8,496,530
+
+Tương tự các bước trên với từng khoản vay, tính toán được các CCF tương đương với từng bucket
+LD	1 ngày	2 – 7 ngày	8-30 
+ngày	31-90 ngày	91-180
+ngày	181-365
+ngày	>365 ngày
+LD1717300005	-	-	22,917,000	45,834,000	68,751,000	137,502,000	4,331,233,000
+LD1717300145	-	-	8,334,000	16,668,000	25,002,000	50,004,000	4,574,966,000
+LD1717900045	-	7,458,333	-	14,916,666	22,374,999	44,749,998	1,417,083,350
+LD1719200003	580,000	-	-	1,160,000	1,740,000	3,480,000	110,200,000
+LD1719200196	-	-	11,020,000	22,040,000	33,060,000	66,120,000	2,094,000,000
+LD1719500196	-	-	11,540,000	23,080,000	34,620,000	69,240,000	1,693,000,000
+LD1719500248	-	-	2,167,000	4,334,000	6,501,000	13,002,000	135,932,162
+LD1720000367	-	-	3,793,000	7,586,000	11,379,000	22,758,000	720,740,000
+LD1933723421	-	4,004,146	3,251,942,351	-	-	-	-
+Tương tự các bước trên với từng khoản vay, tính toán được các BCF tương đương với từng bucket
+LD	1 ngày	2 – 7 ngày	8-30 
+ngày	31-90 ngày	91-180
+ngày	181-365
+ngày	>365 ngày
+LD1717300005	3,858,165	24,600	63,004,318	62,479,456	137,938,703	200,055,822	4,138,875,935
+LD1717300145	3,915,739	24,967	49,083,721	33,620,009	96,246,466	115,062,841	4,377,020,256
+LD1717900045	-	9,685,908	6,720,459	26,687,883	44,882,825	65,096,205	1,353,510,066
+LD1719200003	580,000	184,934	758,931	2,205,654	3,487,586	5,051,599	104,891,296
+LD1719200196	-	3,531,545	25,460,490	41,933,348	66,301,864	96,077,293	1,992,935,459
+LD1719500196	-	2,778,915	21,596,694	41,636,294	61,736,349	93,606,327	1,610,125,421
+LD1719500248	-	245,707	3,050,114	5,949,555	8,798,105	15,018,455	128,874,226
+LD1720000367	-	173,582	7,640,291	16,753,863	19,222,259	36,802,664	685,663,342
+LD1933723421	62,469	8,496,530	3,247,387,498	-	-	-	-
+Bước 3: Tính BCF/CCF tương ứng với từng bucket
+Tổng dòng tiền BCF/CCF của từng khoản vay từng bucket sẽ cho ra kết quả cuối của mô hình
+
+	Kết quả mô hình phi tham số LOAN
+Kết quả LOAN đối với phân khúc KHCN tại thời điểm 30/09/2020 như sau: 
+Đơn vị: Triệu đồng
+Bucket	Daily	2-7 days	8-30 days	31-90 days	91-180 days	181-365 days	>365 ngày
+CCF	1,760	4,231	23,537	52,515	62,590	127,994	4,572,391
+BCF	3,890	16,664	72,627	177,303	228,024	413,227	3,933,284
+
+
+
+
+
+
+
+
+	QUY TRÌNH VẬN HÀNH MÔ HÌNH PHI THAM SỐ TRẢ TRƯỚC HẠN KHOẢN VAY
+	THỬ NGHIỆM MÔ HÌNH
+	Thử nghiệm mô hình là khoảng thời gian chạy kiểm thử kết quả mô hình so với thực tế (bao gồm việc đánh giá, so sánh, đối chiếu mức độ chính xác, mức độ chênh lệch tương đối có thể chấp nhận được…) nhằm đảm bảo tính thận trọng trước khi chính thức áp dụng mô hình vào công tác nhận diện/ đo lường rủi ro, báo cáo quản trị, hỗ trợ các quyết định kinh doanh, xây dựng kế hoạch kinh doanh hàng năm, xây dựng và dự phóng bảng cân đối kế toán…. so với phương pháp tiêu chuẩn khi chưa áp dụng hành vi khách hàng. Theo đó:
+	Trường hợp Đơn vị nghiệp vụ (BSM, MRM) và có thể kết hợp ý kiến các Khối Kinh doanh (nếu cần thiết) đánh giá “ĐẠT” sẽ phối hợp trình lên các cấp có thẩm quyền (Tổng Giám đốc, ALCO, ERC) phê duyệt việc triển khai mô hình này tại XXX.
+	Trường hợp Đơn vị nghiệp vụ đánh giá “KHÔNG ĐẠT” sẽ phối hợp phân tích nguyên nhân và đề xuất đơn vị XDMH hiệu chỉnh mô hình (tùy theo các yêu cầu cụ thể từng lần).
+	Trường hợp kết quả mô hình sau khi điều chỉnh mô hình tiếp tục đánh giá “KHÔNG ĐẠT” thì sẽ phối hợp đề xuất lên cấp có thẩm quyền ngưng triển khai mô hình.
+	Quy định thời gian thử nghiệm mô hình (bao gồm thời gian hiệu chỉnh mô hình): tối thiểu 01 năm kể từ khi Phương pháp luận này được ban hành và mô hình được vận hành theo định kỳ tái vận hành đầu tiên.
+	Quy định về phương pháp thử nghiệm, tiêu chí đánh giá kết quả thử nghiệm, cơ chế phối hợp do các đơn vị nghiệp vụ thống nhất.
+
+	VẬN HÀNH MÔ HÌNH
+Vận hành mô hình được hiểu là quy trình thực hiện tiếp theo và có tần suất định kỳ sau khi hoàn thiện quy trình XDMH lần đầu theo Phương pháp luận được đề cập tại Phần A.
+	Tần suất vận hành:
+a. 	Vận hành mô hình: định kỳ tối thiểu hàng quý
+b. 	Rà soát/kiểm tra dữ liệu đầu vào: định kỳ hàng quý
+c. 	Rà soát/điều chỉnh giả định: tối thiểu hàng năm
+d. 	Lưu trữ: 
+-	Các bảng dữ liệu cuối cùng sử dụng làm đầu vào mô hình (input) được lưu trữ tại: 
+Database: BANTAICHINH
+Schema: BSM
+	Kết quả trả ra của mô hình (output), Bộ mã nguồn (bao gồm xây dựng mô hình và triển khai dữ liệu đầu vào) được lưu trữ tại đường dẫn: \\10.32.16.8\Public2\ALL\00. MÔ HÌNH HÀNH VI_ALM PROJECT\Mô hình Loan
+	Quyền truy cập vào các đường dẫn được phân quyền cụ thể cho từng Đơn vị/cá nhân.
+Dữ liệu đầu vào, kết quả mô hình (đầu ra) và bộ code là duy nhất sau khi các đơn vị có liên quan thống nhất, bất kỳ việc thay đổi nào sẽ do các đơn vị nghiệp vụ đề xuất và có sự phê duyệt của cấp có thẩm quyền sau đó được chuyển đến IRM trực tiếp chỉnh sửa (đối với bộ code dữ liệu đầu vào code mô hình và kết quả).
+	Quy trình thực hiện
+	  Lưu đồ:
+ 
+	Diễn giải lưu đồ:
+Bước	Nội dung thực hiện	Đơn vị đầu mối	Đơn vị phối hợp
+Bước 1: Tiến hành thu thập dữ liệu			
+1.1		Tiến hành thu thập dữ liệu định kỳ.
+	Điều chỉnh dữ liệu nếu có sai sót.	IRM	
+1.2		Kiểm tra tính chính xác của dữ liệu thô theo các nguyên tắc đã thống nhất.
+	Nếu phát sinh sai sót, quay lại điều chỉnh tại Bước 1.1.	IRM/BSM
+/MRM	
+Bước 2: Rà soát và điều chỉnh giả định		Rà soát tính phù hợp của giả định theo từng thời kỳ, điều chỉnh (bổ sung hoặc lược bỏ) các trường dữ liệu đầu vào để lựa chọn tập quan sát (nếu có).	MRM/BSM	IRM
+Bước 3: Triển khai dữ liệu thô theo giả định trước khi chạy mô hình		Thực hiện phân tích và hiệu chỉnh dữ liệu theo các giả thuyết đã được xây dựng trong phương pháp luận (phần A-II) 	IRM	MRM/BSM
+Bước 4: Phân tích và chạy mô hình và kiểm tra hồi tố theo bộ dữ liệu mới.		Chạy bộ mã nguồn/vận hành mô hình để xác định tỷ lệ trả trước theo tuổi, khoảng tin cậy, tỷ lệ duy trì biên theo bộ dữ liệu mới cập nhật.
+	Thực hiện kiểm tra hồi tố đối với mô hình phi tham số với bộ dữ liệu được cập nhật
+	Xuất kết quả mô hình (bao gồm tối thiểu các kết quả CPR theo tuổi, BCF, CCF của từng phân khúc) và lưu trữ theo đường dẫn tại phần B mục II khoản 2 điểm d. 	IRM	
+Bước 5: Đánh giá kết quả mô hình	- BSM/MRM tiến hành đánh giá kết quả tại Bước 4 về tính phù hợp so với thực tế và đề xuất thay đổi điều chỉnh các giá trị tham chiếu, tham số/biến số, các giả định.
+- Nếu kết quả đánh giá “KHÔNG ĐẠT” và quay lại Bước 1. 
+- Nếu kết quả “ĐẠT” chuyển sang Bước 6.	BSM, MRM	IRM
+Bước 6: Sử dụng kết quả mô hình	Kết quả mô hình, sau khi đã được BSM/MRM thống nhất và đánh giá “ĐẠT”, tùy vào mục đích sử dụng của từng Đơn vị, sẽ được sử dụng cho các mô hình đo lường, báo cáo quản trị có liên quan.	BSM
+/MRM	
+Bước 7; Lưu trữ dữ liệu, kết quả và bộ code mô hình	Lưu trữ toàn bộ dữ liệu input, output, source code và tài liệu phương pháp luận trong ổ chung. (ổ chung sẽ được BSM tạo và cấp quyền cho các user liên quan)	IRM	BSM
+
+
