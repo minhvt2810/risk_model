@@ -166,6 +166,7 @@ openxlsx::write.xlsx(bins_khdn_final, "D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.
 
 ## gộp IV, missing và trend
 
+
 sheet_names <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\var1.xlsx")  # extract sheet names
 expected_trend <- read_excel("D:\\Data Minh\\TSCORE\\BSCORE\\EWS\\trend.xlsx")
 
@@ -190,6 +191,17 @@ combined <- sheet_names %>%
                                    )
          ) %>%
   left_join(expected_trend,by = c("variable"="variable")) %>%
+  mutate(
+    percent_bad = bad/sum(bad)
+    ,percent_good = good/sum(good)
+    ,cum_percent_bad =cumsum(percent_bad)
+    ,cum_percent_good =cumsum(percent_good)
+    ,gini_thanhphan = dplyr::if_else(lag(cum_percent_bad) %in% c(0, NA),cum_percent_good*0.5*cum_percent_bad
+                                     ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
+    )
+    ,gini_woe_dev = (0.5-sum(gini_thanhphan))/0.5
+  ) %>%
+  arrange(bin,.by_group = TRUE) %>%
   filter(total_iv >= 0.02 
          & dis_missing<0.3 
          # & (expected_trend == trend_actual)
@@ -878,7 +890,3 @@ ticket_size <- pd_dev_data %>% group_by(bin) %>%
   summarise(cnt_distinct = n_distinct(customer_id)
             ,cnt_distinct_bad = n_distinct(customer_id[tag_gb == 1])
             )
-
-
-
-
