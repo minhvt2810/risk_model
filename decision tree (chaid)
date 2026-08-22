@@ -45,7 +45,7 @@ library(writexl)
 library(RDCOMClient)
 library(remotes)
 library(chaidr)
-
+options(scipen = 999)
 
 ## LẤY DATA từ sql server
 con <- dbConnect(odbc::odbc(),
@@ -55,9 +55,13 @@ con <- dbConnect(odbc::odbc(),
                  Trusted_Connection = "Yes")
 
 
-data_bien_segment <- dbGetQuery(con, "SELECT * FROM bien_segment_khcn")
+data_bien_segment_cu <- dbGetQuery(con, "SELECT * FROM bien_segment_khcn where pl_kh ='khcu'
+                                ")
+
+data_bien_segment_moi <- dbGetQuery(con, "SELECT * FROM bien_segment_khcn where pl_kh ='khmoi'
+                                    ")
 # # chia tập dữ liệu auto theo RANDOM
-train_test_khcn = train_test_split(dat = data_bien_segment, prop = 0.7, split_type = "Random",
+train_test_khcn = train_test_split(dat = data_bien_segment_moi, prop = 0.7, split_type = "Random",
                                    occur_time = NULL, start_date = NULL, cut_date = NULL,
                                    save_data = FALSE, note = FALSE)
 # rm(train_test)
@@ -67,12 +71,21 @@ val_data_khcn = train_test_khcn$test
 
 
 dev_data_khcn <- dev_data_khcn %>% filter(max_dpd==0 & max_nhomno==1) %>% 
-  select(everything(),-txn_date,-customer,-khoi,-max_dpd,-max_nhomno)
+  select(everything(),-txn_date,-customer,-khoi,-max_dpd,-max_nhomno,-monthly_income,-pl_kh)
 val_data_khcn <- val_data_khcn %>% filter(max_dpd==0 & max_nhomno==1) %>% 
-  select(everything(),-txn_date,-customer,-khoi,-max_dpd,-max_nhomno)
+  select(everything(),-txn_date,-customer,-khoi,-max_dpd,-max_nhomno,-monthly_income,-pl_kh)
+#ko đủ obs thì ko chia
+dev_data_khcn_moi = data_bien_segment_moi
+dev_data_khcn_moi <- dev_data_khcn_moi %>% filter(max_dpd==0 & max_nhomno==1) %>% 
+  select(everything(),-txn_date,-customer,-khoi,-max_dpd,-max_nhomno,-monthly_income,-pl_kh)
+
+dev_data_khcn_cu = data_bien_segment_cu
+dev_data_khcn_cu <- dev_data_khcn_cu %>% filter(max_dpd==0 & max_nhomno==1) %>% 
+  select(everything(),-txn_date,-customer,-khoi,-max_dpd,-max_nhomno,-pl_kh)
 ##binning
 #bin ban đầu
-bins_segment_khcn <- woebin(dev_data_khcn, y = "tag_gb"
+bins_segment_khcn <- woebin(
+  dev_data_khcn_moi, y = "tag_gb"
                     ,bin_num_limit=10, positive = "bad|0"
                     , method = "tree"
                     ,count_distr_limit=0.05
@@ -80,12 +93,13 @@ bins_segment_khcn <- woebin(dev_data_khcn, y = "tag_gb"
                     # ,special_values=NA
                     )  # hoặc "chimerge"
 # lọc lấy các biến có số lượng bin <=4 và >2
-bins_segment_khcn2 <- bins_segment_khcn[sapply(bins_segment_khcn, nrow) <=4 & sapply(bins_segment_khcn, nrow) >2]
+bins_segment_khcn2 <- bins_segment_khcn[sapply(bins_segment_khcn, nrow) <=4 & sapply(bins_segment_khcn, nrow) >1]
 
 #bin các biến số lượng bin lớn hơn 4
 names_bin <- bins_segment_khcn[sapply(bins_segment_khcn, nrow) > 4] %>% names()
 
-bins_segment_khcn3 <- woebin(
+bins_segment_khcn3 <- if(length(names_bin) > 0) {
+  woebin(
                      dev_data_khcn %>% select(tag_gb,all_of(names_bin)), y = "tag_gb"
                      ,bin_num_limit=3, positive = "bad|0"
                      ,method = "tree"
@@ -93,15 +107,19 @@ bins_segment_khcn3 <- woebin(
                      ,stop_limit=0.01
                      # ,special_values=NA
                      )
+  } else {0}
 # gộp lấy bin các biến final
-bins_segment_khcn_final <- c(bins_segment_khcn2,bins_segment_khcn3)
+bins_segment_khcn_final <- if(length(names_bin) > 0 & length(bins_segment_khcn2) > 0) 
+{c(bins_segment_khcn2,bins_segment_khcn3)} else if (!(length(names_bin) > 0) & length(bins_segment_khcn2) > 0) 
+{bins_segment_khcn2} else if ((length(names_bin) > 0) & !(length(bins_segment_khcn2) > 0)) 
+      {bins_segment_khcn3} else {bins_segment_khcn}
 
 ### in ra excel
 hs <- createStyle(border ="TopBottomLeftRight",
                   textDecoration = "BOLD", fontColour = "#FFFFFF", fontSize = 12,
                   fontName = "Cambria Narrow", fgFill = "#4F80BD",wrapText=FALSE)
 
-openxlsx::write.xlsx(bins_segment_khcn_final, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var1.xlsx",rowNames=FALSE,
+openxlsx::write.xlsx(bins_segment_khcn_final, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi1.xlsx",rowNames=FALSE,
                      colNames = TRUE, overwrite = TRUE,
                      borders = "all",gridLines =TRUE
                      ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
@@ -109,12 +127,12 @@ openxlsx::write.xlsx(bins_segment_khcn_final, "D:\\Data Minh\\TSCORE\\Chân dung
 ## gộp IV, missing và trend
 
 
-sheet_names <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var1.xlsx")  # extract sheet names
+sheet_names <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi1.xlsx")  # extract sheet names
 expected_trend <- read_excel("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\trend.xlsx")
 
 combined <- sheet_names %>%
   purrr::set_names() %>%
-  map(.f = ~import("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var1.xlsx", which = .x)) %>%
+  map(.f = ~import("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi1.xlsx", which = .x)) %>%
   bind_rows(.id = "Biến") %>%
   mutate(bad_rate = neg/count) %>%
   group_by(variable) %>%
@@ -142,13 +160,9 @@ combined <- sheet_names %>%
                                      ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
     )
     ,gini_woe_dev = abs((0.5-sum(gini_thanhphan))/0.5)
-  ) %>%
-  filter(total_iv >= 0.02 
-         & dis_missing<0.3 
-         # & (expected_trend == trend_actual)
-         )
+  ) #%>% filter(total_iv >= 0.02 & dis_missing<0.3)
 ##save
-openxlsx::write.xlsx(combined, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var4.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
+openxlsx::write.xlsx(combined, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi2.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
                      colNames = TRUE, overwrite = TRUE,
                      borders = "all",gridLines =TRUE
                      ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
@@ -157,7 +171,8 @@ openxlsx::write.xlsx(combined, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\
 
 bins_segment_khcn4 <- woebin(
   dev_data_khcn %>% select(tag_gb,age,max_casa_l3m,sum_giaodich_no_l3m,avg_giaodich_no_l3m
-                           ,avg_giaodich_co_l3m,avg_giatri_saultv_l3m), y = "tag_gb"
+                           ,avg_giaodich_co_l3m,avg_giatri_saultv_l3m
+                           ,sodu,avg_casa_l3m), y = "tag_gb"
   ,bin_num_limit=2, positive = "bad|0"
   ,method = "tree"
   ,count_distr_limit=0.1
@@ -181,7 +196,7 @@ bins_segment_khcn_final2 <- c(bins_segment_khcn4,bins_segment_khcn5)
 
 ### in ra excel
 
-openxlsx::write.xlsx(bins_segment_khcn_final2, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var2.xlsx",rowNames=FALSE,
+openxlsx::write.xlsx(bins_segment_khcn_final2, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi3.xlsx",rowNames=FALSE,
                      colNames = TRUE, overwrite = TRUE,
                      borders = "all",gridLines =TRUE
                      ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
@@ -189,12 +204,12 @@ openxlsx::write.xlsx(bins_segment_khcn_final2, "D:\\Data Minh\\TSCORE\\Chân dun
 ## gộp IV, missing và trend
 
 
-sheet_names2 <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var2.xlsx")  # extract sheet names
+sheet_names2 <- readxl::excel_sheets("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi3.xlsx")  # extract sheet names
 expected_trend <- read_excel("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\trend.xlsx")
 
 combined2 <- sheet_names2 %>%
   purrr::set_names() %>%
-  map(.f = ~import("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var2.xlsx", which = .x)) %>%
+  map(.f = ~import("D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi3.xlsx", which = .x)) %>%
   bind_rows(.id = "Biến") %>%
   mutate(bad_rate = neg/count) %>%
   group_by(variable) %>%
@@ -222,37 +237,46 @@ combined2 <- sheet_names2 %>%
                                      ,(cum_percent_bad-lag(cum_percent_bad))*0.5*(cum_percent_good+lag(cum_percent_good))
     )
     ,gini_woe_dev = abs((0.5-sum(gini_thanhphan))/0.5)
-  ) %>%
-  filter(total_iv >= 0.02 
-         & dis_missing<0.3 
-         # & (expected_trend == trend_actual)
-  )
-##save
-openxlsx::write.xlsx(combined2, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var5.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
-                     colNames = TRUE, overwrite = TRUE,
-                     borders = "all",gridLines =TRUE
-                     ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
-                     ,headerStyle = hs,keepNA=TRUE)
+  ) #%>% filter(total_iv >= 0.02 & dis_missing<0.3)
 ##gộp các lần bin
-combined2
-combined
+# combined2
+# combined
 
 final_combined <- rbind(combined %>% 
                           filter(
                                   !(variable %in% combined2$variable)
                                  )
                         ,combined2
-                        )
+                        ) %>%
+  filter((trend_actual == expected_trend) 
+         & !(variable %in% c("max_ost_l3M_over_current_ost"
+                            ,"avg_ost_l3M_over_current_ost","min_ost_l3M_over_current_ost")
+             )
+         )
+  
+##save
+openxlsx::write.xlsx(final_combined, "D:\\Data Minh\\TSCORE\\Chân dung khách hàng\\var_moi4.xlsx",rowNames=FALSE,# WRITE TO NEW FILE
+                     colNames = TRUE, overwrite = TRUE,
+                     borders = "all",gridLines =TRUE
+                     ,borderStyle ="dotted",colWidths="auto",tabColour="#4F80BD"
+                     ,headerStyle = hs,keepNA=TRUE)
 ## APPLY WOE vao OBS
 names(final_combined)
 name_var <- final_combined %>% select(variable) %>% distinct() %>% as.vector()
 name_var2 <- name_var$variable[!(name_var$variable %in% c("avg_giaodich_co_l3m"
                                                         ,"avg_giatri_saultv_l3m"
-                                                        ,"sum_giaodich_co_l3m"))]
+                                                        ,"sum_giaodich_co_l3m"
+                                                        ,"max_dpd_tctd"
+                                                        ,"avg_hanmuc_thetindung"
+                                                        ,"max_nhomno_caonhat_l3m"
+                                                        ,"avg_duno_tctd_l3m"
+                                                        # ,"vn_gender"
+                                                        ,"max_dpd_L3M"
+                                                        ))]
 
 dev_data_khcn2 <- dev_data_khcn %>% select(all_of(name_var2),tag_gb)
 
-dt_woe_1 <- woebin_ply(dev_data_khcn2, bins=final_combined, no_cores = 1,to = 'bin')## alpply woe vao data goc
+dt_woe_1 <- woebin_ply(dev_data_khcn2, bins=final_combined, no_cores = 1,to = 'bin')## alpply bin vao data goc
 # names(dt_woe_1)
 # dt_woe_1 <- dt_woe_1 %>% 
 #   mutate(tag_gb2=case_when(tag_gb==1 ~ 0,TRUE ~1)) %>%
@@ -262,7 +286,9 @@ dt_woe_1 <- woebin_ply(dev_data_khcn2, bins=final_combined, no_cores = 1,to = 'b
 # dt_woe_1 <- dt_woe_1 %>% select(everything(),-tag_gb)
 dt_woe_1$tag_gb <-as.factor(dt_woe_1$tag_gb)
 # dt_woe_1$tag_gb2 <-as.factor(dt_woe_1$tag_gb2)
-
+dt_woe_1$marital_status_bin <-as.factor(dt_woe_1$marital_status_bin)
+dt_woe_1$age_bin <-as.factor(dt_woe_1$age_bin)
+dt_woe_1$vn_gender_bin <-as.factor(dt_woe_1$vn_gender_bin)
 dt_woe_1$sodu_bin <-as.factor(dt_woe_1$sodu_bin)
 dt_woe_1$max_ost_l3M_over_current_ost_bin <-as.factor(dt_woe_1$max_ost_l3M_over_current_ost_bin)
 dt_woe_1$avg_ost_l3M_over_current_ost_bin <-as.factor(dt_woe_1$avg_ost_l3M_over_current_ost_bin)
@@ -323,7 +349,7 @@ chaid_model_bin4 <- chaid(
 )
 
 print(chaid_model_bin4)
-plot(chaid_model_bin4)
+plot(chaid_model_bin4) 
 
 ##tập val
 #ghép bin
@@ -372,3 +398,147 @@ val_data <- dt_woe_2 %>%
           ,cnt_good=sum(tag_gb==0)
           )
 
+####chạy KMEAN
+# Chuẩn hóa
+#names(dev_data_khcn3)
+
+dev_data_khcn3 <- dev_data_khcn_moi %>% select(everything(),-marital_status) %>%
+  mutate(across(everything(),~ as.numeric(as.character(.))
+                )
+         ) %>%
+  select(everything(),-max_dpd_tctd,-avg_duno_tctd_l3m,-max_nhomno_caonhat_l3m
+         ,-avg_hanmuc_thetindung
+         ,-N_GT_10_30_DPD_L3M,-N_GT_30_90_DPD_L3M,-N_GT_90_DPD_L3M
+         ,-month_since_last_dpd_L3M)
+## CHẠY CORREL theo Hierarchical Clustering
+##Nhóm các biến thành các cluster dựa trên tương quan, sau đó trong mỗi cluster giữ lại biến có Iv/gini cao nhất
+##(hoặc biến có ý nghĩa nghiệp vụ tốt nhất) làm biến đại diện.
+
+res <- cor(dev_data_khcn3)
+diag(res) <- 1# xử lí NA
+res[is.na(res)] <- 0# xử lí NA
+
+dist_mat <- as.dist(1 - abs(res))
+hc <- hclust(dist_mat, method = "average")
+# plot(hc)# ve bieu do phan nhom clust
+
+clusters <- cutree(hc, h = 1 - 0.7)# nhom cac bien co tuong quan cao tren 70%, so 1,2,3 la so nhom
+
+cluster_df <- data.frame(#so 1,2,3 la so nhom
+  Variable = names(clusters),
+  Cluster = clusters)
+
+final_combined2 <- final_combined %>% select(variable,total_iv) %>% distinct() %>% 
+  select(IV=total_iv,Variable=variable)# lay bang IV
+
+cluster_iv <- cluster_df %>%
+  left_join(final_combined2, by = "Variable")
+
+selected_vars <- cluster_iv %>%
+  group_by(Cluster) %>%
+  slice_max(IV, n = 1, with_ties = TRUE) %>% #TRUE để chọn nhiều dòng cùng max
+  ungroup()
+
+# selected_vars
+
+final_vars <- selected_vars$Variable
+
+dev_data_khcn4 <- dev_data_khcn3 %>% select(all_of(final_vars),tag_gb)
+# xx <- dev_data_khcn4 %>% summarise(cnt_bad = sum(tag_gb == 1),cnt_good = sum(tag_gb == 0))
+
+#lấy data theo từng loai ltv
+data_ltv_bin1 <- subset(dev_data_khcn4, avg_ltv_l3m <50)
+data_ltv_bin2 <- subset(dev_data_khcn4, avg_ltv_l3m >=50 & avg_ltv_l3m<80)
+data_ltv_bin3 <- subset(dev_data_khcn4, avg_ltv_l3m >=80 & avg_ltv_l3m<90)
+data_ltv_bin4 <- subset(dev_data_khcn4, avg_ltv_l3m >=90)
+#bỏ các cột missing nhiều
+data_ltv_bin4 <- data_ltv_bin4 %>% select(everything(),-avg_ltv_l3m,-vn_gender)
+data_ltv_bin3 <- data_ltv_bin3 %>% select(everything(),-avg_ltv_l3m,-vn_gender)
+data_ltv_bin2 <- data_ltv_bin2 %>% select(everything(),-avg_ltv_l3m,-vn_gender)
+data_ltv_bin1 <- data_ltv_bin1 %>% select(everything(),-avg_ltv_l3m,-vn_gender)
+#chuẩn hóa
+data_cluster4 <- scale(data_ltv_bin4[,c(1,3:10)])
+data_cluster4_clean <- data_cluster4[, colSums(is.na(data_cluster4)) == 0, drop = FALSE]
+
+data_cluster3 <- scale(data_ltv_bin3[,c(1,3:10)])
+data_cluster3_clean <- data_cluster3[, colSums(is.na(data_cluster3)) == 0, drop = FALSE]
+
+data_cluster2 <- scale(data_ltv_bin2[,c(1,3:10)])
+data_cluster2_clean <- data_cluster2[, colSums(is.na(data_cluster2)) == 0, drop = FALSE]
+
+data_cluster1 <- scale(data_ltv_bin1[,c(1,3:10)])
+data_cluster1_clean <- data_cluster1[, colSums(is.na(data_cluster1)) == 0, drop = FALSE]
+# K-Means
+set.seed(123)
+
+km4 <- kmeans(### bin 4 đang chỉ có 2 bản ghi
+  data_cluster4_clean,
+  centers =1,
+  nstart = 50
+  # ,iter.max = 100
+)
+
+km3 <- kmeans(
+  data_cluster3_clean,
+  centers =1,
+  nstart = 50
+  # ,iter.max = 100
+)
+
+km2 <- kmeans(
+  data_cluster2_clean,
+  centers =1,
+  nstart = 50
+  # ,iter.max = 100
+)
+
+km1 <- kmeans(
+  data_cluster1_clean,
+  centers =1,
+  nstart = 50
+  # ,iter.max = 100
+)
+
+
+# Nhãn cụm gắn vào data ban đầu
+data_ltv_bin4$cluster <- km4$cluster
+data_ltv_bin3$cluster <- km3$cluster
+data_ltv_bin2$cluster <- km2$cluster
+data_ltv_bin1$cluster <- km1$cluster
+#Xem đặc điểm từng cụm
+sum4 <- data_ltv_bin4 %>% group_by(cluster) %>%
+  summarise(cnt_bad = sum(tag_gb[tag_gb==1])
+            ,cnt_good = sum(tag_gb[tag_gb==0])
+            ,across(where(is.numeric), ~ mean(.x, na.rm = TRUE))
+            ) %>%
+  select(everything(),-tag_gb)
+
+sum3 <- data_ltv_bin3 %>% group_by(cluster) %>%
+  summarise(cnt_bad = sum(tag_gb[tag_gb==1])
+            ,cnt_good = sum(tag_gb[tag_gb==0])
+            ,across(where(is.numeric), ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  select(everything(),-tag_gb)
+
+sum2 <- data_ltv_bin2 %>% group_by(cluster) %>%
+  summarise(cnt_bad = sum(tag_gb[tag_gb==1])
+            ,cnt_good = sum(tag_gb[tag_gb==0])
+            ,across(where(is.numeric), ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  select(everything(),-tag_gb)
+
+sum1 <- data_ltv_bin1 %>% group_by(cluster) %>%
+  summarise(cnt_bad = sum(tag_gb[tag_gb==1])
+            ,cnt_good = sum(tag_gb[tag_gb==0])
+            ,across(where(is.numeric), ~ mean(.x, na.rm = TRUE))
+  ) %>%
+  select(everything(),-tag_gb)
+
+#vẽ
+library(factoextra)
+
+fviz_cluster(
+  km3,
+  data = data_ltv_bin3,
+  geom = "point"
+  )
